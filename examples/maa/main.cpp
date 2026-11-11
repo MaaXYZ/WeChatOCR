@@ -62,7 +62,7 @@ int main(int argc, char** argv)
     // MaaTaskerWait joins this recognition; normal applications must also stop
     // and join every other task before releasing this borrowed registration.
     const auto unregister_status = wco_maa_unregister(registration);
-    std::cout << "Maa task status: " << status << "; hit: " << hit << '\n';
+    std::cout << "Maa task status: " << status << "; hit: " << (hit ? "true" : "false") << '\n';
     if (has_detail) {
         std::cout << MaaStringBufferGet(detail.get()) << '\n';
     }
