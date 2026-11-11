@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -32,6 +33,16 @@ using WideCodec = std::conditional_t<sizeof(wchar_t) == 2,
                                     std::codecvt_utf8_utf16<wchar_t>,
                                     std::codecvt_utf8<wchar_t>>;
 thread_local std::string last_error;
+
+void record_error(std::string_view message) noexcept
+{
+    try {
+        last_error.assign(message);
+    }
+    catch (...) {
+        last_error.clear();
+    }
+}
 
 struct Params {
     uint32_t timeout_ms = 10000;
@@ -226,16 +237,20 @@ Json serialize_lines(const std::vector<Line>& lines)
     return json;
 }
 
-MaaBool callback_error(MaaStringBuffer* detail, WcoStatus status, const std::string& message) noexcept
+MaaBool callback_error(MaaStringBuffer* detail, WcoStatus status, std::string_view message) noexcept
 {
     try {
-        last_error = message;
-        const auto json = Json { { "status", status }, { "error", message } }.dump();
+        last_error.assign(message);
+        const auto json = Json { { "status", status }, { "error", last_error } }.dump();
         MaaStringBufferSet(detail, json.c_str());
     }
     catch (...) {
-        if (detail) {
-            MaaStringBufferSet(detail, "{\"status\":10,\"error\":\"adapter allocation failed\"}");
+        try {
+            if (detail) {
+                MaaStringBufferSet(detail, "{\"status\":10,\"error\":\"adapter allocation failed\"}");
+            }
+        }
+        catch (...) {
         }
     }
     return false;
@@ -341,7 +356,7 @@ WcoStatus WCO_CALL wco_maa_register(MaaResource* resource, WcoEngine* engine,
         *registration = nullptr;
     }
     if (!resource || !engine || !registration || (name && !*name)) {
-        last_error = "resource, engine, output and a nonempty name are required";
+        record_error("resource, engine, output and a nonempty name are required");
         return WCO_INVALID_ARGUMENT;
     }
     try {
@@ -359,10 +374,11 @@ WcoStatus WCO_CALL wco_maa_register(MaaResource* resource, WcoEngine* engine,
         return WCO_OK;
     }
     catch (const std::bad_alloc&) {
+        record_error("adapter allocation failed");
         return WCO_OUT_OF_MEMORY;
     }
     catch (const std::exception& error) {
-        last_error = error.what();
+        record_error(error.what());
         return WCO_INTERNAL_ERROR;
     }
     catch (...) {
@@ -376,8 +392,14 @@ WcoStatus WCO_CALL wco_maa_unregister(WcoMaaRegistration* registration)
         return WCO_INVALID_ARGUMENT;
     }
     const std::unique_ptr<WcoMaaRegistration> owned(registration);
-    if (!MaaResourceUnregisterCustomRecognition(owned->resource, owned->name.c_str())) {
-        last_error = "MaaResourceUnregisterCustomRecognition failed";
+    try {
+        if (!MaaResourceUnregisterCustomRecognition(owned->resource, owned->name.c_str())) {
+            record_error("MaaResourceUnregisterCustomRecognition failed");
+            return WCO_INTERNAL_ERROR;
+        }
+    }
+    catch (...) {
+        record_error("MaaResourceUnregisterCustomRecognition threw an exception");
         return WCO_INTERNAL_ERROR;
     }
     last_error.clear();
