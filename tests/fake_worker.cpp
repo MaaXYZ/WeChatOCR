@@ -48,6 +48,7 @@ int main() {
 #endif
     std::string mode;
     std::filesystem::path ocr_path;
+    bool requires_restart = false;
     try {
         while (true) {
             std::array<uint8_t, wco::wire::header_size> header_bytes{};
@@ -112,6 +113,25 @@ int main() {
                 std::cout.write(reinterpret_cast<const char*>(bad.data()), static_cast<std::streamsize>(bad.size()));
                 std::cout.flush();
                 return 0;
+            }
+            if (mode == "error_trailing" || mode == "bad_error_utf8") {
+                response.u32(WCO_OCR_FAILED);
+                response.string(mode == "bad_error_utf8" ? std::string("\xC0\xAF", 2) : "controlled OCR failure");
+                if (mode == "error_trailing") response.u32(123);
+                write_reply(header.request, response);
+                continue;
+            }
+            if (mode == "worker_error_recover") {
+                auto once = ocr_path;
+                once += ".once";
+                if (requires_restart || !std::filesystem::exists(once)) {
+                    mark(once);
+                    requires_restart = true;
+                    response.u32(WCO_WORKER_ERROR);
+                    response.string("runtime transport requires a new worker");
+                    write_reply(header.request, response);
+                    continue;
+                }
             }
             response.u32(WCO_OK);
             response.string("");

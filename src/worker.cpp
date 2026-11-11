@@ -22,23 +22,27 @@ struct FileCloser { void operator()(FILE* file) const { if (file) std::fclose(fi
 using File = std::unique_ptr<FILE, FileCloser>;
 File private_output() {
 #ifdef _WIN32
-    _setmode(_fileno(stdin), _O_BINARY);
-    _setmode(_fileno(stdout), _O_BINARY);
+    if (_setmode(_fileno(stdin), _O_BINARY) < 0 || _setmode(_fileno(stdout), _O_BINARY) < 0) return {};
     const int fd = _dup(_fileno(stdout));
     if (fd < 0) return {};
-    SetHandleInformation(reinterpret_cast<HANDLE>(_get_osfhandle(fd)), HANDLE_FLAG_INHERIT, 0);
+    if (!SetHandleInformation(reinterpret_cast<HANDLE>(_get_osfhandle(fd)), HANDLE_FLAG_INHERIT, 0)) {
+        _close(fd); return {};
+    }
     FILE* file = _fdopen(fd, "wb");
     if (!file) { _close(fd); return {}; }
-    _dup2(_fileno(stderr), _fileno(stdout));
+    File result(file);
+    if (_dup2(_fileno(stderr), _fileno(stdout)) < 0
+        || !SetStdHandle(STD_OUTPUT_HANDLE, reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(stdout))))) return {};
 #else
     const int fd = dup(STDOUT_FILENO);
     if (fd < 0) return {};
-    fcntl(fd, F_SETFD, FD_CLOEXEC);
+    if (fcntl(fd, F_SETFD, FD_CLOEXEC) < 0) { close(fd); return {}; }
     FILE* file = fdopen(fd, "wb");
     if (!file) { close(fd); return {}; }
-    dup2(STDERR_FILENO, STDOUT_FILENO);
+    File result(file);
+    if (dup2(STDERR_FILENO, STDOUT_FILENO) < 0) return {};
 #endif
-    return File(file);
+    return result;
 }
 bool send(FILE* output, uint64_t request, const wco::wire::Writer& payload) {
     if (payload.data.size() > wco::wire::max_payload) return false;

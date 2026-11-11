@@ -12,29 +12,62 @@
 #include <mutex>
 #include <random>
 #include <string>
+#include <string_view>
 #include <vector>
 #ifdef _WIN32
 #include <windows.h>
+#include <sddl.h>
 #else
+#include <cerrno>
 #include <dlfcn.h>
+#include <sys/stat.h>
 #endif
 
 namespace {
 using Clock = std::chrono::steady_clock;
 thread_local std::string last_error;
-WcoStatus fail(WcoStatus status, std::string message) { last_error = std::move(message); return status; }
+WcoStatus fail(WcoStatus status, std::string_view message) noexcept {
+    // Diagnostics must never let an allocation failure escape a C ABI call,
+    // including from the catch handler for an earlier allocation failure.
+    try { last_error.assign(message); } catch (...) { last_error.clear(); }
+    return status;
+}
 std::filesystem::path path(const std::string& s) { return std::filesystem::u8path(s); }
 std::string utf8(const std::filesystem::path& p) {
     const auto s = p.u8string(); return {reinterpret_cast<const char*>(s.data()), s.size()};
 }
 std::string private_temp(const std::filesystem::path& base) {
+#ifdef _WIN32
+    // filesystem::permissions only controls the read-only attribute on Windows.
+    // Protect both this directory and inherited file ACLs even when the caller
+    // deliberately selects a shared, publicly writable temporary base.
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            L"D:P(A;OICI;FA;;;OW)(A;OICI;FA;;;SY)", SDDL_REVISION_1, &descriptor, nullptr))
+        throw std::runtime_error("cannot create private temporary directory ACL");
+    struct Descriptor { PSECURITY_DESCRIPTOR value; ~Descriptor() { LocalFree(value); } } owned{descriptor};
+    SECURITY_ATTRIBUTES security{sizeof(security), descriptor, FALSE};
+#endif
     std::random_device random;
     for (unsigned i = 0; i < 64; ++i) {
         auto candidate = base / ("wechatocr-" + std::to_string(random()) + "-" + std::to_string(random()));
-        if (!std::filesystem::create_directory(candidate)) continue;
+#ifdef _WIN32
+        if (!CreateDirectoryW(candidate.c_str(), &security)) {
+            const auto code = GetLastError();
+            if (code == ERROR_ALREADY_EXISTS) continue;
+            throw std::filesystem::filesystem_error("cannot create private temporary directory", candidate,
+                                                     std::error_code(code, std::system_category()));
+        }
+#else
+        if (mkdir(candidate.c_str(), 0700) != 0) {
+            if (errno == EEXIST) continue;
+            throw std::filesystem::filesystem_error("cannot create private temporary directory", candidate,
+                                                     std::error_code(errno, std::generic_category()));
+        }
         std::error_code error;
         std::filesystem::permissions(candidate, std::filesystem::perms::owner_all, error);
         if (error) { std::filesystem::remove(candidate); throw std::runtime_error("cannot secure temporary directory"); }
+#endif
         return utf8(candidate);
     }
     throw std::runtime_error("cannot allocate temporary directory");
@@ -95,7 +128,9 @@ struct WcoEngine {
     uint64_t next_request = 1;
     ~WcoEngine() {
         process.stop();
-        if (!temp_dir.empty()) { std::error_code error; std::filesystem::remove_all(path(temp_dir), error); }
+        try {
+            if (!temp_dir.empty()) { std::error_code error; std::filesystem::remove_all(path(temp_dir), error); }
+        } catch (...) { /* Destruction must not throw across the C ABI. */ }
     }
 
     WcoStatus exchange(uint32_t kind, const std::vector<uint8_t>& payload, Clock::time_point deadline,
@@ -133,7 +168,8 @@ struct WcoEngine {
         try {
             wco::wire::Reader r(reply);
             auto result = static_cast<WcoStatus>(r.u32()); auto message = r.string();
-            if (!r.done() || result < WCO_OK || result > WCO_INTERNAL_ERROR) throw std::runtime_error("invalid startup response");
+            if (!r.done() || result < WCO_OK || result > WCO_INTERNAL_ERROR || !valid_utf8(message))
+                throw std::runtime_error("invalid startup response");
             if (result != WCO_OK) { process.stop(); return fail(result, std::move(message)); }
             ready = true; return WCO_OK;
         } catch (const std::exception& e) {
@@ -166,6 +202,8 @@ WcoStatus WCO_CALL wco_create(const WcoOptions* options, WcoEngine** engine) {
             return fail(WCO_INVALID_ARGUMENT, "runtime_dir and ocr_path must be absolute paths");
         if (!std::filesystem::is_directory(path(e->runtime_dir)) || !std::filesystem::is_regular_file(path(e->ocr_path)))
             return fail(WCO_RUNTIME_MISSING, "runtime directory or OCR entry file does not exist");
+        if (options->worker_path && !valid_utf8(options->worker_path))
+            return fail(WCO_INVALID_ARGUMENT, "worker_path must be UTF-8");
         e->worker = options->worker_path && *options->worker_path ? path(options->worker_path) : default_worker();
         if (!e->worker.is_absolute() || !std::filesystem::is_regular_file(e->worker))
             return fail(WCO_WORKER_ERROR, "worker path must identify an existing absolute executable");
@@ -208,8 +246,8 @@ WcoStatus WCO_CALL wco_recognize(WcoEngine* engine, const WcoImageView* image, u
     }
     struct Pending { std::atomic<uint32_t>& n; ~Pending() { n.fetch_sub(1, std::memory_order_relaxed); } } pending{engine->pending};
     std::unique_lock<std::timed_mutex> lock(engine->mutex, std::defer_lock);
-    if (!lock.try_lock_until(deadline)) return fail(WCO_TIMEOUT, "deadline expired while queueing");
     try {
+        if (!lock.try_lock_until(deadline)) return fail(WCO_TIMEOUT, "deadline expired while queueing");
         if (!engine->ready) {
             const auto status = engine->start(std::min(deadline, Clock::now() + std::chrono::milliseconds(engine->startup_timeout)));
             if (status != WCO_OK) return status;
@@ -225,8 +263,13 @@ WcoStatus WCO_CALL wco_recognize(WcoEngine* engine, const WcoImageView* image, u
         if (status != WCO_OK) return status;
         wco::wire::Reader r(reply);
         status = static_cast<WcoStatus>(r.u32()); const auto error = r.string();
-        if (status < WCO_OK || status > WCO_INTERNAL_ERROR) throw std::runtime_error("invalid recognition status");
-        if (status != WCO_OK) return fail(status, error);
+        if (status < WCO_OK || status > WCO_INTERNAL_ERROR || !valid_utf8(error))
+            throw std::runtime_error("invalid recognition status or error text");
+        if (status != WCO_OK) {
+            if (!r.done()) throw std::runtime_error("unexpected trailing OCR error data");
+            if (status != WCO_OCR_FAILED) { engine->ready = false; engine->process.stop(); }
+            return fail(status, error);
+        }
         auto output = std::make_unique<WcoResult>();
         output->vendor_error = static_cast<int32_t>(r.u32()); output->width = r.u32(); output->height = r.u32();
         const uint32_t count = r.u32();

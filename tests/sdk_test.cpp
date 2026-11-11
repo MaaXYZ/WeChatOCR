@@ -137,6 +137,8 @@ void test_api_validation() {
     options = runtime.options;
     options.worker_path = missing.c_str();
     STATUS(wco_create(&options, &engine), WCO_WORKER_ERROR);
+    options.worker_path = "\xC0\xAF";
+    STATUS(wco_create(&options, &engine), WCO_INVALID_ARGUMENT);
     REQUIRE(std::string(wco_last_error()).size() > 0);
     REQUIRE(std::string(wco_version()) == WCO_VERSION);
     REQUIRE(std::string(wco_status_string(999)) == "Unknown status");
@@ -234,7 +236,7 @@ void test_empty_and_vendor_error() {
 void test_bad_workers() {
     Image image;
     for (const char* mode : {"crash", "malformed", "oversize", "truncated", "wrong_request",
-                             "bad_utf8", "bad_dimensions", "nan_score"}) {
+                             "bad_utf8", "bad_dimensions", "nan_score", "error_trailing", "bad_error_utf8"}) {
         Runtime runtime(mode);
         auto engine = runtime.create();
         WcoResult* result = nullptr;
@@ -268,6 +270,36 @@ void test_timeout_and_recovery() {
     REQUIRE(result == nullptr);
     REQUIRE(Clock::now() - start < std::chrono::seconds(3));
     REQUIRE(wco_result_line_count(recognize(engine.get(), image.view).get()) == 1);
+}
+
+void test_reported_worker_error_recovery() {
+    Runtime runtime("worker_error_recover");
+    auto engine = runtime.create();
+    Image image;
+    WcoResult* result = nullptr;
+    STATUS(wco_recognize(engine.get(), &image.view, 1000, &result), WCO_WORKER_ERROR);
+    REQUIRE(result == nullptr);
+    // This fake runtime stays permanently broken until its process is replaced.
+    // A syntactically valid error response still requires transport recovery.
+    REQUIRE(wco_result_line_count(recognize(engine.get(), image.view).get()) == 1);
+}
+
+void test_private_temporary_directory() {
+    Runtime runtime("success");
+    runtime.options.temp_dir = runtime.directory_string.c_str();
+    std::filesystem::path private_directory;
+    {
+        auto engine = runtime.create();
+        for (const auto& file : std::filesystem::directory_iterator(runtime.directory)) {
+            if (file.path().filename().string().starts_with("wechatocr-")) private_directory = file.path();
+        }
+        REQUIRE(!private_directory.empty());
+#ifndef _WIN32
+        const auto permissions = std::filesystem::status(private_directory).permissions();
+        REQUIRE((permissions & std::filesystem::perms::all) == std::filesystem::perms::owner_all);
+#endif
+    }
+    REQUIRE(!std::filesystem::exists(private_directory));
 }
 
 struct Outcome { WcoStatus status; WcoResult* result; };
@@ -331,6 +363,8 @@ int main(int argc, char** argv) {
         {"crash and malformed workers", test_bad_workers},
         {"startup error and timeout", test_startup_failures},
         {"timeout followed by recovery", test_timeout_and_recovery},
+        {"reported worker error forces runtime replacement", test_reported_worker_error_recovery},
+        {"private temporary directory and cleanup", test_private_temporary_directory},
         {"bounded request queue", test_queue_busy},
         {"queue deadline preserves active request", test_queue_timeout},
     };

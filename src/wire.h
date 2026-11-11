@@ -16,14 +16,19 @@ constexpr size_t header_size = 24;
 enum Kind : uint32_t { hello = 1, recognize = 2, reply = 3 };
 
 class Writer {
+    void require_space(size_t n) const {
+        if (data.size() > max_payload || n > max_payload - data.size())
+            throw std::length_error("IPC payload exceeds limit");
+    }
 public:
     std::vector<uint8_t> data;
-    void u32(uint32_t v) { for (unsigned i = 0; i < 4; ++i) data.push_back(static_cast<uint8_t>(v >> (8 * i))); }
-    void u64(uint64_t v) { for (unsigned i = 0; i < 8; ++i) data.push_back(static_cast<uint8_t>(v >> (8 * i))); }
+    void u32(uint32_t v) { require_space(4); for (unsigned i = 0; i < 4; ++i) data.push_back(static_cast<uint8_t>(v >> (8 * i))); }
+    void u64(uint64_t v) { require_space(8); for (unsigned i = 0; i < 8; ++i) data.push_back(static_cast<uint8_t>(v >> (8 * i))); }
     void f32(float v) { u32(std::bit_cast<uint32_t>(v)); }
-    void bytes(std::span<const uint8_t> v) { data.insert(data.end(), v.begin(), v.end()); }
+    void bytes(std::span<const uint8_t> v) { require_space(v.size()); if (!v.empty()) data.insert(data.end(), v.begin(), v.end()); }
     void string(const std::string& s) {
-        if (s.size() > max_payload) throw std::length_error("wire string exceeds limit");
+        if (s.size() > max_payload - 4) throw std::length_error("wire string exceeds limit");
+        require_space(4 + s.size());
         u32(static_cast<uint32_t>(s.size()));
         bytes({reinterpret_cast<const uint8_t*>(s.data()), s.size()});
     }
@@ -53,6 +58,7 @@ inline Header parse_header(std::span<const uint8_t> data) {
     Reader r(data);
     if (r.u32() != magic || r.u32() != version) throw std::runtime_error("incompatible worker protocol");
     Header h{r.u32(), r.u32(), r.u64()};
+    if (!r.done()) throw std::runtime_error("unexpected trailing IPC header data");
     if (h.size > max_payload) throw std::runtime_error("IPC payload exceeds limit");
     return h;
 }
