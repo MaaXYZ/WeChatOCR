@@ -47,6 +47,12 @@ set_target_properties(WeChatOCR PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION 
 add_executable(wechatocr-worker src/worker.cpp src/png.cpp src/process.cpp
     src/runtime_backend.cpp src/runtime_protocol.cpp)
 wco_target(wechatocr-worker)
+if(MSVC)
+    # The public boundary owns its allocations; ship the SDK and private worker
+    # without requiring a separately installed Visual C++ Redistributable.
+    set_property(TARGET WeChatOCR wechatocr-worker PROPERTY
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 install(TARGETS WeChatOCR wechatocr-worker EXPORT WeChatOCRTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

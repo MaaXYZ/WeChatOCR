@@ -68,6 +68,7 @@ typedef struct WcoOptions {
 
 typedef struct WcoImageView {
     uint32_t struct_size;
+    /* BGRA alpha is ignored. Images are limited to 32768 px per axis and 64 MiB of packed pixels. */
     uint32_t format;
     const uint8_t* data;
     uint64_t data_size;
