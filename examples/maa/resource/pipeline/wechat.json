@@ -1,0 +1,21 @@
+{
+    "FindStartWithWeChatOCR": {
+        "recognition": {
+            "type": "Custom",
+            "param": {
+                "custom_recognition": "WeChatOCR",
+                "custom_recognition_param": {
+                    "expected": ["开始"],
+                    "replace": [["開", "开"]],
+                    "threshold": 0,
+                    "timeout_ms": 10000,
+                    "order_by": "Horizontal"
+                },
+                "index": 0
+            }
+        },
+        "action": {
+            "type": "Click"
+        }
+    }
+}
