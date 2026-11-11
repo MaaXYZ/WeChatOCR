@@ -1,0 +1,16 @@
+/build*/
+/stage/
+/dist/
+/.cache/
+/.venv/
+__pycache__/
+*.py[cod]
+*.user
+*.suo
+.vs/
+.DS_Store
+
+# Proprietary runtimes and local test inputs must stay outside source control.
+/runtime/
+/test-runtime/
+/local-runtime/

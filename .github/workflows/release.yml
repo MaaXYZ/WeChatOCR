@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x64
+            cmake_args: ""
+          - os: windows-2022
+            platform: windows-x64
+            cmake_args: "-A x64"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          header = pathlib.Path("include/WeChatOCR/WeChatOCR.h").read_text(encoding="utf-8")
+          version = re.search(r'^#define WCO_VERSION "([^"]+)"', header, re.MULTILINE)
+          if version is None or os.environ["RELEASE_TAG"] != "v" + version.group(1):
+              raise SystemExit("The release tag must match WCO_VERSION in the public header")
+          PY
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON ${{ matrix.cmake_args }}
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Install
+        run: cmake --install build --config Release --prefix stage
+      - name: Package
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import shutil
+
+          tag = os.environ["RELEASE_TAG"]
+          platform = os.environ["RELEASE_PLATFORM"]
+          destination = pathlib.Path("dist")
+          destination.mkdir()
+          archive_format = "zip" if platform.startswith("windows") else "gztar"
+          shutil.make_archive(str(destination / f"WeChatOCR-{tag}-{platform}"), archive_format, "stage")
+          PY
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+      - name: Write checksums and release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import os
+          import pathlib
+
+          destination = pathlib.Path("dist")
+          assets = sorted(p for p in destination.iterdir() if p.is_file())
+          if len(assets) != 2:
+              raise SystemExit(f"Expected two SDK archives, got {len(assets)}")
+          checksums = [f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in assets]
+          (destination / "SHA256SUMS").write_text("".join(checksums), encoding="utf-8")
+          tag = os.environ["RELEASE_TAG"]
+          notes = f"""WeChatOCR {tag}
+
+          Native C ABI SDK and isolated worker for Windows x64 and Linux x64.
+
+          - SDK archives include the library, worker, public headers and CMake integration.
+          - Both platform builds must pass the repository's automated tests before publication.
+          - Tencent binaries and models are not included. Supply a compatible local WeChat runtime.
+          - The runtime adapters are experimental: these automated checks do not validate a real Tencent runtime, OCR accuracy, or compatibility with every WeChat version.
+
+          See [README](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/README.md), [runtime setup](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/docs/runtime.md), and [changelog](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/CHANGELOG.md).
+
+          Verify downloaded archives with `SHA256SUMS`.
+          """
+          pathlib.Path("release-notes.md").write_text(notes, encoding="utf-8")
+          PY
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --title "$RELEASE_TAG" --notes-file release-notes.md
