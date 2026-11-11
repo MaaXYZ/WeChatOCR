@@ -13,6 +13,7 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 #ifdef _WIN32
 #include <windows.h>
@@ -127,10 +128,48 @@ struct WcoEngine {
     bool ready = false;
     uint64_t next_request = 1;
     ~WcoEngine() {
-        process.stop();
+        stop_worker();
         try {
             if (!temp_dir.empty()) { std::error_code error; std::filesystem::remove_all(path(temp_dir), error); }
         } catch (...) { /* Destruction must not throw across the C ABI. */ }
+    }
+
+    bool cleanup_worker_files() noexcept {
+        try {
+            if (temp_dir.empty()) return true;
+            const auto directory = path(temp_dir);
+            std::error_code error;
+            std::filesystem::directory_iterator file(directory, error), end;
+            if (error) return error == std::errc::no_such_file_or_directory;
+            bool removed = true;
+            while (file != end) {
+                std::error_code remove_error;
+                std::filesystem::remove_all(file->path(), remove_error);
+                if (remove_error) removed = false;
+                file.increment(error);
+                if (error) return false;
+            }
+            return removed;
+        } catch (...) { return false; }
+    }
+
+    void stop_worker() noexcept {
+        ready = false;
+        process.stop();
+        // Terminate the worker/runtime tree before removing a PNG which the
+        // runtime may still have open. Windows descendants can release their
+        // file handles just after the direct worker exits, so retry briefly.
+        // Cleanup never changes the original failure status or throws across
+        // the C ABI, and only touches this engine's private directory contents.
+        try {
+            const auto deadline = Clock::now() + std::chrono::milliseconds(250);
+            while (!cleanup_worker_files()) {
+                const auto remaining = deadline - Clock::now();
+                if (remaining <= Clock::duration::zero()) break;
+                std::this_thread::sleep_for(std::min(remaining,
+                    std::chrono::duration_cast<Clock::duration>(std::chrono::milliseconds(10))));
+            }
+        } catch (...) { /* Preserve the error which caused worker shutdown. */ }
     }
 
     WcoStatus exchange(uint32_t kind, const std::vector<uint8_t>& payload, Clock::time_point deadline,
@@ -139,8 +178,9 @@ struct WcoEngine {
         auto header = wco::wire::header(kind, static_cast<uint32_t>(payload.size()), request);
         std::string error;
         const auto io_error = [&]() {
-            ready = false; process.stop();
-            return fail(Clock::now() >= deadline ? WCO_TIMEOUT : WCO_WORKER_ERROR, std::move(error));
+            const auto status = Clock::now() >= deadline ? WCO_TIMEOUT : WCO_WORKER_ERROR;
+            stop_worker();
+            return fail(status, std::move(error));
         };
         if (!process.write_all(header.data(), header.size(), deadline, error) ||
             !process.write_all(payload.data(), payload.size(), deadline, error) ||
@@ -151,13 +191,12 @@ struct WcoEngine {
             reply.resize(h.size);
             if (!process.read_all(reply.data(), reply.size(), deadline, error)) return io_error();
         } catch (const std::exception& e) {
-            ready = false; process.stop(); return fail(WCO_WORKER_ERROR, e.what());
+            stop_worker(); return fail(WCO_WORKER_ERROR, e.what());
         }
         return WCO_OK;
     }
     WcoStatus start(Clock::time_point deadline) {
-        process.stop(); ready = false;
-        for (const auto& file : std::filesystem::directory_iterator(path(temp_dir))) std::filesystem::remove_all(file.path());
+        stop_worker();
         std::string error;
         if (!process.start(worker, {}, error)) return fail(WCO_WORKER_ERROR, std::move(error));
         wco::wire::Writer config;
@@ -170,10 +209,10 @@ struct WcoEngine {
             auto result = static_cast<WcoStatus>(r.u32()); auto message = r.string();
             if (!r.done() || result < WCO_OK || result > WCO_INTERNAL_ERROR || !valid_utf8(message))
                 throw std::runtime_error("invalid startup response");
-            if (result != WCO_OK) { process.stop(); return fail(result, std::move(message)); }
+            if (result != WCO_OK) { stop_worker(); return fail(result, std::move(message)); }
             ready = true; return WCO_OK;
         } catch (const std::exception& e) {
-            process.stop(); return fail(WCO_WORKER_ERROR, e.what());
+            stop_worker(); return fail(WCO_WORKER_ERROR, e.what());
         }
     }
 };
@@ -267,7 +306,7 @@ WcoStatus WCO_CALL wco_recognize(WcoEngine* engine, const WcoImageView* image, u
             throw std::runtime_error("invalid recognition status or error text");
         if (status != WCO_OK) {
             if (!r.done()) throw std::runtime_error("unexpected trailing OCR error data");
-            if (status != WCO_OCR_FAILED) { engine->ready = false; engine->process.stop(); }
+            if (status != WCO_OCR_FAILED) engine->stop_worker();
             return fail(status, error);
         }
         auto output = std::make_unique<WcoResult>();
@@ -288,9 +327,16 @@ WcoStatus WCO_CALL wco_recognize(WcoEngine* engine, const WcoImageView* image, u
         if (output->vendor_error) return fail(WCO_OCR_FAILED, "vendor OCR error " + std::to_string(output->vendor_error));
         if (Clock::now() >= deadline) return fail(WCO_TIMEOUT, "deadline expired while decoding result");
         *result = output.release(); return WCO_OK;
-    } catch (const std::bad_alloc&) { return fail(WCO_OUT_OF_MEMORY, "allocation failed"); }
-      catch (const std::exception& e) { engine->ready = false; engine->process.stop(); return fail(WCO_WORKER_ERROR, e.what()); }
-      catch (...) { engine->ready = false; engine->process.stop(); return fail(WCO_INTERNAL_ERROR, "unexpected exception"); }
+    } catch (const std::bad_alloc&) {
+        if (lock.owns_lock()) engine->stop_worker();
+        return fail(WCO_OUT_OF_MEMORY, "allocation failed");
+    } catch (const std::exception& e) {
+        if (lock.owns_lock()) engine->stop_worker();
+        return fail(WCO_WORKER_ERROR, e.what());
+    } catch (...) {
+        if (lock.owns_lock()) engine->stop_worker();
+        return fail(WCO_INTERNAL_ERROR, "unexpected exception");
+    }
 }
 WcoStatus WCO_CALL wco_get_capabilities(const WcoEngine* engine, WcoCapabilities* caps) {
     last_error.clear();

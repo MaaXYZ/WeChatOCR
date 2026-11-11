@@ -29,6 +29,7 @@ struct Sandbox {
         base = std::filesystem::temp_directory_path() / ("wco-foreign-test-" + std::to_string(std::random_device{}()));
         runtime = base / utf8_path("runtime 空格"); temps = base / "temporary";
         std::filesystem::create_directories(runtime); std::filesystem::create_directory(temps);
+        std::ofstream(temps / "user-owned.txt") << "keep user temporary files";
 #ifdef _WIN32
         std::filesystem::copy_file(library, runtime / "mmmojo_64.dll");
         std::ofstream(runtime / "WeChatOCR.exe"); std::ofstream(runtime / "wxocr.dll"); std::ofstream(base / "weixin.exe");
@@ -87,8 +88,19 @@ void temporary_removed(Sandbox& box)
 {
     std::string path; std::getline(std::ifstream(box.runtime / "last-image-path"), path);
     require(!path.empty() && !std::filesystem::exists(utf8_path(path)), "temporary PNG survived its response");
-    for (const auto& directory : std::filesystem::directory_iterator(box.temps))
+    for (const auto& directory : std::filesystem::directory_iterator(box.temps)) {
+        if (directory.path().filename() == "user-owned.txt") continue;
         require(std::filesystem::is_empty(directory.path()), "private temporary directory still contains files");
+    }
+    std::string user_file; std::getline(std::ifstream(box.temps / "user-owned.txt"), user_file);
+    require(user_file == "keep user temporary files", "worker cleanup modified the user's temporary base");
+}
+
+void private_directories_removed(Sandbox& box)
+{
+    for (const auto& file : std::filesystem::directory_iterator(box.temps))
+        require(file.path().filename() == "user-owned.txt", "engine destruction left its private temporary directory");
+    require(std::filesystem::is_regular_file(box.temps / "user-owned.txt"), "engine destruction removed user files");
 }
 
 void tests(const std::filesystem::path& worker, const std::filesystem::path& library, uint32_t version)
@@ -103,9 +115,9 @@ void tests(const std::filesystem::path& worker, const std::filesystem::path& lib
     line(recognize(instance.get(), WCO_PIXEL_BGRA, {0,0,255,0, 0,255,0,73, 255,0,0,149, 255,255,255,255}, 8), rgb);
     line(recognize(instance.get(), WCO_PIXEL_GRAY, {0,64,128,255}, 2), "像素:004080ff");
     instance.reset();
-    require(std::filesystem::is_empty(box.temps), "engine destruction left its private temporary directory");
+    private_directories_removed(box);
 
-    for (const std::string mode : {"no-score", "empty", "vendor-error", "disconnect", "malformed", "send-fail", "hang"}) {
+    for (const std::string mode : {"no-score", "empty", "vendor-error", "hang", "disconnect", "malformed", "send-fail"}) {
         box.mode(mode); instance = engine(box, worker, version);
         if (mode == "no-score") line(recognize(instance.get(), WCO_PIXEL_BGR, bgr, 8), rgb, false);
         else if (mode == "empty") require(wco_result_line_count(recognize(instance.get(), WCO_PIXEL_BGR, bgr, 8).get()) == 0, "empty OCR result");
@@ -113,6 +125,9 @@ void tests(const std::filesystem::path& worker, const std::filesystem::path& lib
             const WcoStatus expected = mode == "hang" ? WCO_TIMEOUT
                 : mode == "vendor-error" ? WCO_OCR_FAILED : WCO_WORKER_ERROR;
             recognize(instance.get(), WCO_PIXEL_BGR, bgr, 8, expected, 150);
+            // Check before recovery or destruction gets a chance to clean up
+            // the image left behind by a terminated, in-flight worker.
+            temporary_removed(box);
             box.mode("ok");
             if (mode != "vendor-error") {
                 line(recognize(instance.get(), WCO_PIXEL_BGR, bgr, 8), rgb);
@@ -120,11 +135,11 @@ void tests(const std::filesystem::path& worker, const std::filesystem::path& lib
             }
         }
         instance.reset();
-        require(std::filesystem::is_empty(box.temps), "failed engine left temporary files");
+        private_directories_removed(box);
     }
     box.mode("startup-fail"); engine(box, worker, version, WCO_RUNTIME_INCOMPATIBLE);
     box.mode("startup-hang"); engine(box, worker, version, WCO_TIMEOUT);
-    require(std::filesystem::is_empty(box.temps), "failed startup left temporary files");
+    private_directories_removed(box);
 }
 } // namespace
 
