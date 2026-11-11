@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -79,6 +80,50 @@ void invalid(const wco::RuntimeCandidate& candidate, const std::string& expected
     require(error.find(expected) != std::string::npos,"unexpected diagnostic: " + error);
 }
 
+bool same_object(const std::string& left, const std::string& right)
+{
+    std::error_code error;
+    return fs::equivalent(path(left),path(right),error) && !error;
+}
+std::string spelling(const std::string& value)
+{
+    std::error_code error;
+    const auto canonical = fs::weakly_canonical(path(value),error);
+    return value + " (canonical: " + (error ? error.message() : utf8(canonical)) + ")";
+}
+void windows_pairings(const std::vector<wco::RuntimeCandidate>& found,
+                      const wco::RuntimeCandidate& expected3, const wco::RuntimeCandidate& expected4)
+{
+    // On Windows temp_directory_path()/absolute() may retain an 8.3 username
+    // (RUNNER~1), whereas discovery weakly_canonical() expands the long name.
+    // Compare actual filesystem objects, retaining the exact protocol/runtime
+    // pairing requirement instead of comparing their interchangeable spellings.
+    bool paired3 = false, paired4 = false;
+    for (const auto& candidate : found) {
+        if (same_object(candidate.ocr_path,expected3.ocr_path)) {
+            require(candidate.protocol == 3 && same_object(candidate.runtime_dir,expected3.runtime_dir),
+                    "WeChat 3 paired with an unrelated runtime: " + spelling(candidate.runtime_dir)
+                    + "; expected " + spelling(expected3.runtime_dir));
+            paired3 = true;
+        }
+        if (same_object(candidate.ocr_path,expected4.ocr_path)) {
+            require(candidate.protocol == 4 && same_object(candidate.runtime_dir,expected4.runtime_dir),
+                    "WeChat 4 parent/host relationship was lost: " + spelling(candidate.runtime_dir)
+                    + "; expected " + spelling(expected4.runtime_dir));
+            paired4 = true;
+        }
+    }
+    if (!paired3 || !paired4) {
+        std::ostringstream diagnostic;
+        diagnostic << "Windows plugin pairing missing; expected3=" << spelling(expected3.ocr_path)
+                   << "; expected4=" << spelling(expected4.ocr_path);
+        for (const auto& candidate : found)
+            diagnostic << "\nfound protocol=" << candidate.protocol << " entry=" << spelling(candidate.ocr_path)
+                       << " runtime=" << spelling(candidate.runtime_dir);
+        throw std::runtime_error(diagnostic.str());
+    }
+}
+
 void fixtures()
 {
     Sandbox box;
@@ -92,18 +137,11 @@ void fixtures()
     const auto found = discover({base});
     require(found.size() == 4,"portable layouts did not yield exactly four paired candidates");
     require(found[0].protocol == 4 && found.back().protocol == 3,"protocol/version preference");
-    bool paired3 = false, paired4 = false;
     for (const auto& candidate : found) {
         valid(candidate);
         require(!candidate.version.empty(),"numeric directory version was lost");
-        if (candidate.ocr_path == win3.ocr_path) {
-            require(candidate.runtime_dir == win3.runtime_dir,"WeChat 3 paired with an unrelated WeChat 4 runtime"); paired3 = true;
-        }
-        if (candidate.ocr_path == win4.ocr_path) {
-            require(candidate.runtime_dir == win4.runtime_dir,"WeChat 4 parent/host relationship was lost"); paired4 = true;
-        }
     }
-    require(paired3 && paired4,"Windows plugin pairing missing");
+    windows_pairings(found,win3,win4);
     const auto linux_sorted = discover({base/"linux"});
     require(linux_sorted.size() == 2 && linux_sorted[0].version == "4.10.0" && linux_sorted[1].version == "4.9.0",
             "versions were sorted lexically instead of naturally");
@@ -141,7 +179,19 @@ void fixtures()
 
     // A supplied root itself may be a normal installation symlink.
     fs::create_directory_symlink(base,box.root/"root-alias",symlink_error);
-    if (!symlink_error) require(discover({base,box.root/"root-alias"}).size() == 4,"root aliases were not deduplicated");
+    if (!symlink_error) {
+        require(discover({base,box.root/"root-alias"}).size() == 4,"root aliases were not deduplicated");
+        auto alias3 = win3, alias4 = win4;
+        alias3.runtime_dir = utf8(box.root/"root-alias"/"WeChat"/"[3.9.8.25]");
+        alias3.ocr_path = utf8(box.root/"root-alias"/"plugins3"/"7061"/"extracted"/"WeChatOCR.exe");
+        alias4.runtime_dir = utf8(box.root/"root-alias"/"Weixin"/"4.10.0.26");
+        alias4.ocr_path = utf8(box.root/"root-alias"/"plugins4"/"8011"/"extracted"/"wxocr.dll");
+        const auto aliased = discover({box.root/"root-alias"});
+        require(aliased.size() == 4,"alias-root discovery changed candidate count");
+        // Regression for distinct input/canonical spellings on every platform
+        // with symlink support, even when the host does not use short names.
+        windows_pairings(aliased,alias3,alias4);
+    }
 
     Sandbox deep;
     auto level = deep.root;
@@ -156,7 +206,8 @@ void fixtures()
     for (unsigned i = 1; i <= 12; ++i)
         last = windows_runtime(pairs.root/"runtimes"/("3.9."+std::to_string(i)),pairs.root/"plugin"/"7061",3);
     const auto bounded = discover({pairs.root});
-    require(bounded.size() == 8 && bounded.front().runtime_dir == last.runtime_dir,"plugin pairing bound/natural preference failed");
+    require(bounded.size() == 8 && same_object(bounded.front().runtime_dir,last.runtime_dir),
+            "plugin pairing bound/natural preference failed");
     for (const auto& candidate : bounded)
         require(candidate.source.find("heuristic-pair") != std::string::npos,"heuristic pairing was not labelled");
 }
