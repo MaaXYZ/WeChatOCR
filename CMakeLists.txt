@@ -73,7 +73,8 @@ install(FILES "${PROJECT_BINARY_DIR}/WeChatOCRConfig.cmake"
     "${PROJECT_BINARY_DIR}/WeChatOCRConfigVersion.cmake" DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/WeChatOCR)
 install(FILES LICENSE README.md README.en.md CHANGELOG.md DESTINATION ${CMAKE_INSTALL_DATADIR}/WeChatOCR)
 install(DIRECTORY docs/ DESTINATION ${CMAKE_INSTALL_DATADIR}/WeChatOCR/docs)
-install(DIRECTORY examples/ DESTINATION ${CMAKE_INSTALL_DATADIR}/WeChatOCR/examples)
+install(DIRECTORY examples/ DESTINATION ${CMAKE_INSTALL_DATADIR}/WeChatOCR/examples
+    PATTERN "__pycache__" EXCLUDE PATTERN "*.pyc" EXCLUDE)
 
 if(BUILD_TESTING)
     add_executable(wco_protocol_test src/runtime_protocol_test.cpp src/runtime_protocol.cpp)
