@@ -1,0 +1,11 @@
+@PACKAGE_INIT@
+include("${CMAKE_CURRENT_LIST_DIR}/WeChatOCRTargets.cmake")
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/WeChatOCRMaaAdapterTargets.cmake")
+    include(CMakeFindDependencyMacro)
+    find_dependency(MaaFramework CONFIG)
+    find_dependency(nlohmann_json CONFIG)
+    find_dependency(Boost CONFIG COMPONENTS regex)
+    find_dependency(OpenCV COMPONENTS core imgcodecs)
+    include("${CMAKE_CURRENT_LIST_DIR}/WeChatOCRMaaAdapterTargets.cmake")
+endif()
+check_required_components(WeChatOCR)
