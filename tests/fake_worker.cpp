@@ -66,6 +66,15 @@ int main() {
                 if (!reader.done() || runtime_dir.empty() || protocol > 4) return 3;
                 (void)temp_dir;
                 mode = ocr_path.filename().string();
+                // Toolkit fixtures use real entry names (wxocr/wxocr.dll).
+                // Keep their startup behavior controlled by the selected
+                // runtime directory, independently of discovery ordering.
+                std::string controlled;
+                std::getline(std::ifstream(std::filesystem::u8path(runtime_dir) / "toolkit-worker-mode"), controlled);
+                if (controlled == "startup_error" || controlled == "startup_hang") {
+                    mode = controlled;
+                    std::ofstream(std::filesystem::u8path(runtime_dir) / "toolkit-startup-entered", std::ios::app) << "entered\n";
+                }
                 if (mode == "startup_hang") {
                     std::this_thread::sleep_for(std::chrono::seconds(30));
                     return 0;

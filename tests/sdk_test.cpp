@@ -113,7 +113,8 @@ Result recognize(WcoEngine* engine, const WcoImageView& image, uint32_t timeout 
 
 void test_api_validation() {
     WcoEngine* engine = reinterpret_cast<WcoEngine*>(uintptr_t(1));
-    STATUS(wco_create(nullptr, &engine), WCO_INVALID_ARGUMENT);
+    auto invalid_options = WcoOptions{};
+    STATUS(wco_create(&invalid_options, &engine), WCO_INVALID_ARGUMENT);
     REQUIRE(engine == nullptr);
     STATUS(wco_create(nullptr, nullptr), WCO_INVALID_ARGUMENT);
     Runtime runtime("success");
