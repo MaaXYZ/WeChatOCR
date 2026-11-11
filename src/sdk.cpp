@@ -89,7 +89,7 @@ std::filesystem::path default_worker() {
     module = std::filesystem::absolute(info.dli_fname).parent_path();
     auto nearby = module / "wechatocr-worker";
     if (std::filesystem::is_regular_file(nearby)) return nearby;
-    return module.parent_path() / "bin" / "wechatocr-worker";
+    return module / WCO_WORKER_INSTALL_RELATIVE;
 #endif
 }
 bool valid_utf8(const std::string& text) {
