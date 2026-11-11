@@ -21,7 +21,7 @@ extern "C" {
 #endif
 
 #define WCO_ABI_VERSION 1u
-#define WCO_VERSION "0.1.1"
+#define WCO_VERSION "0.2.0"
 
 typedef struct WcoEngine WcoEngine;
 typedef struct WcoResult WcoResult;
@@ -110,6 +110,7 @@ WCO_API const char* WCO_CALL wco_version(void);
 WCO_API const char* WCO_CALL wco_status_string(WcoStatus status);
 /* Per-thread diagnostic; overwritten by the next fallible SDK call on this thread. */
 WCO_API const char* WCO_CALL wco_last_error(void);
+/* NULL options, or both runtime paths omitted, automatically discover a local runtime. */
 WCO_API WcoStatus WCO_CALL wco_create(const WcoOptions* options, WcoEngine** engine);
 /* Thread-safe. timeout covers queueing, recovery, image transfer and recognition.
  * Zero timeout is invalid. On failure *result is NULL. Empty successful OCR is OK.

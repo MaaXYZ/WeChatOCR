@@ -110,18 +110,14 @@ jobs:
           tag = os.environ["RELEASE_TAG"]
           notes = f"""WeChatOCR {tag}
 
-          Native C ABI SDK and isolated worker for Windows x64 and Linux x64.
+          Native C ABI SDK for Windows/Linux x64.
 
-          - SDK archives include the library, worker, public headers and CMake integration.
-          - Failed and timed-out worker requests clean their temporary images before returning; C ABI v1 is unchanged.
-          - Both platform builds must pass the repository's automated tests before publication.
-          - Tencent binaries and models are not included. Supply a compatible local WeChat runtime.
-          - A separate real-runtime smoke test passed with official Linux x64 WeChat 4.1.13.26: Chinese/English text, mixed sizes/formats/ROIs, blank input, worker/vendor crash recovery, in-flight timeout recovery and cleanup.
-          - Runtime adapters remain experimental. Windows vendor runtimes, game-image accuracy and long-term stability have not been established. CI itself does not run Tencent components.
+          - Toolkit discovers and validates local runtimes: `wco_create(NULL, &engine)`.
+          - Custom search roots, default options and image-view helpers are included.
+          - C ABI v1 remains compatible. Tencent runtime files are provided separately.
 
-          See [README](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/README.md), [runtime setup](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/docs/runtime.md), and [changelog](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/CHANGELOG.md).
-
-          Verify downloaded archives with `SHA256SUMS`.
+          Tested with Linux WeChat 4.1.13.26; Windows vendor runtime is not yet tested.
+          See [README](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/README.md) and [changelog](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/CHANGELOG.md). Verify archives with `SHA256SUMS`.
           """
           pathlib.Path("release-notes.md").write_text(notes, encoding="utf-8")
           PY

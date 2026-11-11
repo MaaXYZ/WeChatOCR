@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0 — 2026-11-11
+
+- Add Toolkit APIs for runtime discovery, validation, defaults and image views.
+- Allow `wco_create(NULL, &engine)`; support portable roots and query the selected paths.
+- Simplify the documentation and Python example. C ABI v1 remains compatible.
+
 ## 0.1.1 — 2026-11-11
 
 - Remove temporary images immediately after terminating a failed or timed-out worker, before returning to the caller. Previously cleanup waited for the next request or engine destruction.

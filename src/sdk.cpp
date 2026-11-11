@@ -1,4 +1,6 @@
 #include "WeChatOCR/WeChatOCR.h"
+#include "WeChatOCR/Toolkit.h"
+#include "api_internal.h"
 #include "worker_process.h"
 #include "wire.h"
 
@@ -93,7 +95,7 @@ std::filesystem::path default_worker() {
     return module / WCO_WORKER_INSTALL_RELATIVE;
 #endif
 }
-bool valid_utf8(const std::string& text) {
+bool valid_utf8(std::string_view text) noexcept {
     size_t i = 0;
     while (i < text.size()) {
         const auto lead = static_cast<uint8_t>(text[i++]);
@@ -120,6 +122,7 @@ struct ResultLine { float quad[8]; float confidence; uint32_t has_confidence; st
 struct WcoResult { uint32_t width = 0, height = 0; int32_t vendor_error = 0; std::vector<ResultLine> lines; };
 struct WcoEngine {
     std::string runtime_dir, ocr_path, temp_dir;
+    std::string runtime_version, runtime_source = "explicit";
     std::filesystem::path worker;
     uint32_t protocol = 0, startup_timeout = 10000, max_pending = 16;
     std::atomic<uint32_t> pending{0};
@@ -217,6 +220,26 @@ struct WcoEngine {
     }
 };
 
+namespace wco {
+WcoStatus set_error(WcoStatus status, std::string_view message) noexcept { return fail(status, message); }
+void clear_error() noexcept { last_error.clear(); }
+bool valid_utf8(std::string_view text) noexcept { return ::valid_utf8(text); }
+bool valid_image(const WcoImageView* image) noexcept {
+    if (!image || image->struct_size < sizeof(WcoImageView) || !image->data ||
+        !image->width || !image->height || image->width > 32768 || image->height > 32768) return false;
+    const uint32_t channels = image->format == WCO_PIXEL_GRAY ? 1 : image->format == WCO_PIXEL_BGRA ? 4 :
+        (image->format == WCO_PIXEL_BGR || image->format == WCO_PIXEL_RGB) ? 3 : 0;
+    const uint64_t row = uint64_t(image->width) * channels;
+    return channels && image->stride >= row && row * image->height <= 64u * 1024u * 1024u &&
+        image->stride <= std::numeric_limits<uint64_t>::max() / image->height &&
+        image->stride * (image->height - 1) + row <= image->data_size;
+}
+WcoStatus set_runtime_metadata(WcoEngine* engine, std::string_view version, std::string_view source) noexcept {
+    try { engine->runtime_version = version; engine->runtime_source = source; return WCO_OK; }
+    catch (...) { return fail(WCO_OUT_OF_MEMORY, "cannot store selected runtime information"); }
+}
+}
+
 extern "C" {
 const char* WCO_CALL wco_version(void) { return WCO_VERSION; }
 const char* WCO_CALL wco_last_error(void) { return last_error.c_str(); }
@@ -229,10 +252,14 @@ WcoStatus WCO_CALL wco_create(const WcoOptions* options, WcoEngine** engine) {
     last_error.clear();
     if (!engine) return fail(WCO_INVALID_ARGUMENT, "engine output is NULL");
     *engine = nullptr;
-    if (!options || options->struct_size < sizeof(WcoOptions)) return fail(WCO_INVALID_ARGUMENT, "invalid options struct_size");
+    if (!options) return wco_create_auto(nullptr, nullptr, engine);
+    if (options->struct_size < sizeof(WcoOptions)) return fail(WCO_INVALID_ARGUMENT, "invalid options struct_size");
     if (options->abi_version != WCO_ABI_VERSION) return fail(WCO_ABI_MISMATCH, "unsupported ABI version");
-    if (!options->runtime_dir || !options->ocr_path || options->protocol > 4 || options->protocol == 1 || options->protocol == 2)
-        return fail(WCO_INVALID_ARGUMENT, "runtime_dir, ocr_path and protocol are required");
+    const bool has_runtime = options->runtime_dir && *options->runtime_dir;
+    const bool has_ocr = options->ocr_path && *options->ocr_path;
+    if (!has_runtime && !has_ocr) return wco_create_auto(options, nullptr, engine);
+    if (!has_runtime || !has_ocr || options->protocol > 4 || options->protocol == 1 || options->protocol == 2)
+        return fail(WCO_INVALID_ARGUMENT, "set both runtime paths, or omit both for automatic discovery");
     try {
         auto e = std::make_unique<WcoEngine>();
         e->runtime_dir = options->runtime_dir; e->ocr_path = options->ocr_path;
@@ -255,6 +282,16 @@ WcoStatus WCO_CALL wco_create(const WcoOptions* options, WcoEngine** engine) {
         }
         e->temp_dir = private_temp(temp_base);
         e->protocol = options->protocol;
+        if (!e->protocol) {
+#ifdef _WIN32
+            auto extension = path(e->ocr_path).extension().wstring();
+            std::transform(extension.begin(), extension.end(), extension.begin(),
+                [](wchar_t c) { return c >= L'A' && c <= L'Z' ? wchar_t(c + L'a' - L'A') : c; });
+            e->protocol = extension == L".dll" ? 4 : 3;
+#else
+            e->protocol = 4;
+#endif
+        }
         e->startup_timeout = options->startup_timeout_ms ? options->startup_timeout_ms : 10000;
         e->max_pending = options->max_pending_requests ? options->max_pending_requests : 16;
         const auto result = e->start(Clock::now() + std::chrono::milliseconds(e->startup_timeout));
@@ -269,16 +306,11 @@ WcoStatus WCO_CALL wco_recognize(WcoEngine* engine, const WcoImageView* image, u
     last_error.clear();
     if (!result) return fail(WCO_INVALID_ARGUMENT, "result output is NULL");
     *result = nullptr;
-    if (!engine || !image || image->struct_size < sizeof(WcoImageView) || !timeout_ms || !image->data ||
-        !image->width || !image->height || image->width > 32768 || image->height > 32768)
+    if (!engine || !timeout_ms || !wco::valid_image(image))
         return fail(WCO_INVALID_ARGUMENT, "invalid engine, image or timeout");
     const uint32_t channels = image->format == WCO_PIXEL_GRAY ? 1 : image->format == WCO_PIXEL_BGRA ? 4 :
         (image->format == WCO_PIXEL_BGR || image->format == WCO_PIXEL_RGB) ? 3 : 0;
     const uint64_t row = uint64_t(image->width) * channels;
-    if (!channels || image->stride < row || row * image->height > 64u * 1024u * 1024u ||
-        image->stride > std::numeric_limits<uint64_t>::max() / image->height ||
-        image->stride * (image->height - 1) + row > image->data_size)
-        return fail(WCO_INVALID_ARGUMENT, "invalid pixel format, stride or image size");
     const auto deadline = Clock::now() + std::chrono::milliseconds(timeout_ms);
     if (engine->pending.fetch_add(1, std::memory_order_relaxed) >= engine->max_pending) {
         engine->pending.fetch_sub(1, std::memory_order_relaxed); return fail(WCO_BUSY, "request queue is full");
@@ -342,6 +374,14 @@ WcoStatus WCO_CALL wco_get_capabilities(const WcoEngine* engine, WcoCapabilities
     last_error.clear();
     if (!engine || !caps || caps->struct_size < sizeof(WcoCapabilities)) return fail(WCO_INVALID_ARGUMENT, "invalid capabilities output");
     *caps = {sizeof(WcoCapabilities), WCO_ABI_VERSION, 1, 0, 0, 0}; return WCO_OK;
+}
+WcoStatus WCO_CALL wco_engine_get_runtime(const WcoEngine* engine, WcoRuntimeInfo* info) {
+    last_error.clear();
+    if (!engine || !info || info->struct_size < sizeof(WcoRuntimeInfo))
+        return fail(WCO_INVALID_ARGUMENT, "invalid runtime information output");
+    *info = {sizeof(WcoRuntimeInfo), engine->protocol, engine->runtime_dir.c_str(), engine->ocr_path.c_str(),
+             engine->runtime_version.c_str(), engine->runtime_source.c_str()};
+    return WCO_OK;
 }
 uint32_t WCO_CALL wco_result_line_count(const WcoResult* result) {
     return result ? static_cast<uint32_t>(result->lines.size()) : 0;
