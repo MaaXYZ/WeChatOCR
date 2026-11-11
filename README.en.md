@@ -17,7 +17,7 @@ wechatocr-worker
 User-provided WeChat OCR runtime
 ```
 
-**Version 0.1.0 is experimental.** A real-runtime smoke test passed with the official Linux x64 WeChat `4.1.13.26` runtime, covering English/Chinese text, multiple image sizes, pixel formats and non-contiguous ROIs. Windows vendor runtimes, game-image accuracy and long-term stability still need validation. See the [runtime record](docs/runtime.md#已验证记录).
+**Version 0.1.x is experimental.** A real-runtime smoke test passed with the official Linux x64 WeChat `4.1.13.26` runtime, covering English/Chinese text, multiple image sizes, pixel formats and non-contiguous ROIs. Windows vendor runtimes, game-image accuracy and long-term stability still need validation. See the [runtime record](docs/runtime.md#已验证记录).
 
 ## Features
 

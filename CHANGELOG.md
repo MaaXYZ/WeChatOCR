@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 — 2026-11-11
+
+- Remove temporary images immediately after terminating a failed or timed-out worker, before returning to the caller. Previously cleanup waited for the next request or engine destruction.
+- Check the failure-to-retry interval in production-worker regression tests and the optional real-runtime smoke script.
+- Keep C ABI v1 unchanged.
+
 ## 0.1.0 — 2026-11-11
 
 Initial experimental release.

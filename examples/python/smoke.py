@@ -276,14 +276,16 @@ def main():
                 finally:
                     monitoring_done.set()
                     observer.join()
+                png_after_timeout = len(list(pathlib.Path(temporary).rglob("*.png")))
                 timeout_recovered = recognize(sdk, engine, text_image(sizes[0], font_path), timeout_ms=args.timeout_ms)
                 tracked_processes.update(descendants(os.getpid()))
                 report["deadline_recovery"] = {"timed_out_call": timed_out,
                                                 "temporary_png_observed_in_flight": bool(observed_png),
+                                                "temporary_png_before_retry": png_after_timeout,
                                                 "next_call": timeout_recovered,
                                                 "old_pids_still_running": still_running(timeout_tree),
                                                 "temporary_png_after_recovery": len(list(pathlib.Path(temporary).rglob("*.png")))}
-                if timed_out["status"] != 6 or not observed_png or timeout_recovered["status"] or still_running(timeout_tree):
+                if timed_out["status"] != 6 or not observed_png or png_after_timeout or timeout_recovered["status"] or still_running(timeout_tree):
                     failed = True
         except Exception as error:
             failed = True

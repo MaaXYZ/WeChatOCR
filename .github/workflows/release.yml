@@ -113,6 +113,7 @@ jobs:
           Native C ABI SDK and isolated worker for Windows x64 and Linux x64.
 
           - SDK archives include the library, worker, public headers and CMake integration.
+          - Failed and timed-out worker requests clean their temporary images before returning; C ABI v1 is unchanged.
           - Both platform builds must pass the repository's automated tests before publication.
           - Tencent binaries and models are not included. Supply a compatible local WeChat runtime.
           - A separate real-runtime smoke test passed with official Linux x64 WeChat 4.1.13.26: Chinese/English text, mixed sizes/formats/ROIs, blank input, worker/vendor crash recovery, in-flight timeout recovery and cleanup.

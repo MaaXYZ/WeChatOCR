@@ -17,7 +17,7 @@ wechatocr-worker
 使用者提供的微信 OCR runtime
 ```
 
-**0.1.0 是实验版本。** 已使用官方 Linux x64 微信 `4.1.13.26` runtime 完成真实 OCR 冒烟测试，包含中英文、多尺寸、像素格式和非连续 ROI 输入。Windows 真实 runtime、游戏样本准确率和长期稳定性仍需验证；具体记录见 [runtime 文档](docs/runtime.md#已验证记录)。
+**0.1.x 为实验版本。** 已使用官方 Linux x64 微信 `4.1.13.26` runtime 完成真实 OCR 冒烟测试，包含中英文、多尺寸、像素格式和非连续 ROI 输入。Windows 真实 runtime、游戏样本准确率和长期稳定性仍需验证；具体记录见 [runtime 文档](docs/runtime.md#已验证记录)。
 
 ## 功能
 
