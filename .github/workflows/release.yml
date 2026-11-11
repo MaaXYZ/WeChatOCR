@@ -46,6 +46,12 @@ jobs:
         run: ctest --test-dir build -C Release --output-on-failure
       - name: Install
         run: cmake --install build --config Release --prefix stage
+      - name: Build installed C package consumer
+        run: cmake -S tests/package_consumer -B build-consumer -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/stage" ${{ matrix.cmake_args }}
+      - name: Link installed C package consumer
+        run: cmake --build build-consumer --config Release --parallel
+      - name: Test installed C package consumer
+        run: ctest --test-dir build-consumer -C Release --output-on-failure
       - name: Package
         shell: bash
         env:
