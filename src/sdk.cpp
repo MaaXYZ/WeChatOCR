@@ -1,5 +1,5 @@
 #include "WeChatOCR/WeChatOCR.h"
-#include "process.h"
+#include "worker_process.h"
 #include "wire.h"
 
 #include <algorithm>

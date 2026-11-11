@@ -1,6 +1,6 @@
 #include "WeChatOCR/WeChatOCR.h"
 #include "png.h"
-#include "process.h"
+#include "worker_process.h"
 #include "runtime_backend.h"
 #include "wire.h"
 
@@ -104,7 +104,7 @@ int main() {
                     if (!file) throw std::runtime_error("cannot write private temporary PNG");
                 }
                 wco::RuntimeResult result;
-                if (!backend->recognize(utf8(image.path), result, error)) status(response, WCO_OCR_FAILED, error);
+                if (!backend->recognize(utf8(image.path), result, error)) status(response, WCO_WORKER_ERROR, error);
                 else if (result.vendor_error) status(response, WCO_OCR_FAILED, "vendor OCR error " + std::to_string(result.vendor_error));
                 else if (result.width != width || result.height != height) status(response, WCO_OCR_FAILED, "vendor returned unexpected image dimensions");
                 else {
