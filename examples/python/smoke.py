@@ -31,6 +31,17 @@ class Options(c.Structure):
                 ("max_pending_requests", c.c_uint32)]
 
 
+class DiscoveryOptions(c.Structure):
+    _fields_ = [("struct_size", c.c_uint32), ("flags", c.c_uint32),
+                ("search_roots", c.POINTER(c.c_char_p)), ("search_root_count", c.c_uint32)]
+
+
+class RuntimeInfo(c.Structure):
+    _fields_ = [("struct_size", c.c_uint32), ("protocol", c.c_uint32),
+                ("runtime_dir", c.c_char_p), ("ocr_path", c.c_char_p),
+                ("version", c.c_char_p), ("source", c.c_char_p)]
+
+
 class View(c.Structure):
     _fields_ = [("struct_size", c.c_uint32), ("format", c.c_uint32),
                 ("data", c.POINTER(c.c_uint8)), ("data_size", c.c_uint64),
@@ -49,6 +60,17 @@ def load_sdk(filename):
     sdk.wco_last_error.restype = c.c_char_p
     sdk.wco_create.argtypes = [c.POINTER(Options), c.POINTER(c.c_void_p)]
     sdk.wco_create.restype = c.c_int32
+    sdk.wco_options_init.argtypes = [c.POINTER(Options)]
+    sdk.wco_options_init.restype = None
+    sdk.wco_discovery_options_init.argtypes = [c.POINTER(DiscoveryOptions)]
+    sdk.wco_discovery_options_init.restype = None
+    sdk.wco_create_auto.argtypes = [c.POINTER(Options), c.POINTER(DiscoveryOptions), c.POINTER(c.c_void_p)]
+    sdk.wco_create_auto.restype = c.c_int32
+    sdk.wco_engine_get_runtime.argtypes = [c.c_void_p, c.POINTER(RuntimeInfo)]
+    sdk.wco_engine_get_runtime.restype = c.c_int32
+    sdk.wco_image_view_init.argtypes = [c.POINTER(View), c.c_uint32, c.c_void_p, c.c_uint64,
+                                        c.c_uint32, c.c_uint32, c.c_uint64]
+    sdk.wco_image_view_init.restype = c.c_int32
     sdk.wco_recognize.argtypes = [c.c_void_p, c.POINTER(View), c.c_uint32, c.POINTER(c.c_void_p)]
     sdk.wco_recognize.restype = c.c_int32
     sdk.wco_result_line_count.argtypes = [c.c_void_p]
@@ -85,7 +107,7 @@ def text_image(size, font_path):
     return image
 
 
-def image_view(image, pixel_format, padded):
+def image_view(sdk, image, pixel_format, padded):
     channels = 1 if pixel_format == 4 else 4 if pixel_format == 2 else 3
     image_mode = "L" if pixel_format == 4 else "RGBA" if pixel_format == 2 else "RGB"
     raw_mode = {1: "BGR", 2: "BGRA", 3: "RGB", 4: "L"}[pixel_format]
@@ -101,13 +123,16 @@ def image_view(image, pixel_format, padded):
     stride = backing.width * channels
     offset = y_offset * stride + x_offset * channels
     pixels = c.cast(c.byref(memory, offset), c.POINTER(c.c_uint8))
-    view = View(c.sizeof(View), pixel_format, pixels, len(raw) - offset,
-                image.width, image.height, stride)
+    view = View()
+    status = sdk.wco_image_view_init(c.byref(view), pixel_format, pixels, len(raw) - offset,
+                                     image.width, image.height, stride if padded else 0)
+    if status:
+        raise RuntimeError(f"image initialization failed: {sdk.wco_last_error().decode('utf-8', errors='replace')}")
     return memory, view
 
 
 def recognize(sdk, engine, image, pixel_format=3, padded=False, timeout_ms=15000):
-    memory, view = image_view(image, pixel_format, padded)
+    memory, view = image_view(sdk, image, pixel_format, padded)
     result = c.c_void_p()
     started = time.perf_counter()
     status = sdk.wco_recognize(engine, c.byref(view), timeout_ms, c.byref(result))
@@ -172,12 +197,15 @@ def still_running(identities):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", type=pathlib.Path, required=True)
-    parser.add_argument("--runtime-dir", type=pathlib.Path, required=True)
-    parser.add_argument("--ocr", type=pathlib.Path, help="Defaults to runtime-dir/wxocr on Linux")
+    parser.add_argument("--runtime-dir", type=pathlib.Path,
+                        help="Search this root; with --ocr, use the explicit runtime/entry pair")
+    parser.add_argument("--ocr", type=pathlib.Path, help="Explicit OCR entry; pair with --runtime-dir")
+    parser.add_argument("--search-root", type=pathlib.Path, action="append", default=[],
+                        help="Additional custom discovery root; may be repeated")
     parser.add_argument("--worker", type=pathlib.Path)
     parser.add_argument("--font")
     parser.add_argument("--iterations", type=int, default=30)
-    parser.add_argument("--protocol", type=int, choices=(0, 3, 4), default=4)
+    parser.add_argument("--protocol", type=int, choices=(0, 3, 4), default=0)
     parser.add_argument("--timeout-ms", type=int, default=15000)
     parser.add_argument("--exercise-recovery", action="store_true",
                         help="Linux: test worker/vendor crash and an in-flight deadline, then verify recovery")
@@ -187,27 +215,50 @@ def main():
         parser.error("iterations and timeout must be positive")
     if args.exercise_recovery and os.name != "posix":
         parser.error("--exercise-recovery is currently implemented only on Linux")
-    runtime = args.runtime_dir.resolve()
-    ocr = args.ocr.resolve() if args.ocr else runtime / "wxocr"
     sdk = load_sdk(args.sdk.resolve())
-    font_path = choose_font(args.font)
-    report = {"sdk_version": sdk.wco_version().decode(), "runtime_dir": str(runtime),
-              "ocr_path": str(ocr), "iterations": args.iterations, "calls": []}
+    report = {"sdk_version": sdk.wco_version().decode(), "iterations": args.iterations, "calls": []}
     engine = c.c_void_p()
     failed = False
     tracked_processes = {}
     with tempfile.TemporaryDirectory(prefix="wechatocr-smoke-") as temporary:
-        paths = [os.fsencode(runtime), os.fsencode(ocr),
-                 os.fsencode(args.worker.resolve()) if args.worker else None, os.fsencode(temporary)]
-        options = Options(c.sizeof(Options), 1, *paths, args.protocol, args.timeout_ms, 16)
+        options = Options()
+        sdk.wco_options_init(c.byref(options))
+        options.worker_path = str(args.worker.resolve()).encode("utf-8") if args.worker else None
+        options.temp_dir = temporary.encode("utf-8")
+        options.protocol = args.protocol
+        options.startup_timeout_ms = args.timeout_ms
+        search_roots = list(args.search_root)
+        if args.ocr:
+            options.ocr_path = str(args.ocr.resolve()).encode("utf-8")
+            if args.runtime_dir:
+                options.runtime_dir = str(args.runtime_dir.resolve()).encode("utf-8")
+        elif args.runtime_dir:
+            search_roots.append(args.runtime_dir)
+        discovery = DiscoveryOptions()
+        sdk.wco_discovery_options_init(c.byref(discovery))
+        roots = (c.c_char_p * len(search_roots))(*[
+            str(root.resolve()).encode("utf-8") for root in search_roots])
+        if search_roots:
+            discovery.flags = 0
+            discovery.search_roots = roots
+            discovery.search_root_count = len(roots)
         started = time.perf_counter()
-        create_status = sdk.wco_create(c.byref(options), c.byref(engine))
+        create_status = sdk.wco_create_auto(c.byref(options), c.byref(discovery), c.byref(engine))
         report["create_status"] = create_status
         report["create_ms"] = round((time.perf_counter() - started) * 1000, 3)
         report["create_error"] = sdk.wco_last_error().decode("utf-8", errors="replace")
         try:
             if create_status:
                 raise RuntimeError(f"engine creation failed: {report['create_error']}")
+            runtime = RuntimeInfo()
+            runtime.struct_size = c.sizeof(runtime)
+            runtime_status = sdk.wco_engine_get_runtime(engine, c.byref(runtime))
+            if runtime_status:
+                raise RuntimeError(f"runtime information failed: {sdk.wco_last_error().decode('utf-8', errors='replace')}")
+            report["runtime"] = {"protocol": runtime.protocol, **{
+                field: (getattr(runtime, field) or b"").decode("utf-8")
+                for field in ("runtime_dir", "ocr_path", "version", "source")}}
+            font_path = choose_font(args.font)
             tracked_processes.update(descendants(os.getpid()))
             sizes = [(1200, 240), (900, 200), (1400, 280), (640, 180)]
             for index in range(args.iterations):
