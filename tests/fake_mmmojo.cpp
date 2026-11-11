@@ -250,6 +250,7 @@ FAKE_EXPORT void StartMMMojoEnvironment(void* handle)
         if (env->mode == "startup-hang") return;
         if (env->mode == "startup-fail") { env->launch_failure(42, env->user); return; }
         std::puts("simulated foreign runtime stdout noise");
+        std::fflush(stdout); // Must really reach the worker's redirected stream.
         env->connect(true, env->user);
         Bytes ready;
         if (env->version == 3) { scalar(ready, 1, 1); scalar(ready, 2, 1); }
@@ -290,7 +291,8 @@ FAKE_EXPORT bool SendMMMojoWriteInfo(void* handle, void* raw)
         if (env->mode == "malformed") push(env, id, Bytes{0xff});
         else {
             // A delayed/wrong task must not overwrite the active task result.
-            push(env, id, response(env, input.task + 100, picture));
+            Picture wrong_task = picture; wrong_task.pixels = "wrong-task";
+            push(env, id, response(env, input.task + 100, wrong_task));
             push(env, id, response(env, input.task, picture));
         }
         return true;
