@@ -119,7 +119,11 @@ int main()
                 "duplicate name overwrote registration");
 
         const auto result = run(tasker.get(), image.get(),
-            { { "expected", "^开.$" }, { "replace", { { "開", "开" } } }, { "threshold", 0.7 }, { "timeout_ms", 900 } });
+            { { "expected", "^开.$" }, { "replace", Json::array({ Json::array({ "開", "开" }) }) },
+              { "threshold", 0.7 }, { "timeout_ms", 900 } });
+        if (!result.hit) {
+            std::cerr << result.detail.dump() << '\n';
+        }
         require(result.hit, "Unicode regex/replacement did not match");
         require(result.box.x == 11 && result.box.y == 22 && result.box.width == 10 && result.box.height == 10,
                 "ROI coordinates were not restored");

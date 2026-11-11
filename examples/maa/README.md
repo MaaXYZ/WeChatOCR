@@ -54,3 +54,13 @@ For images, Maa's public C buffer API does not expose row stride. The adapter de
 On an operational failure the callback returns no hit and includes `status` and `error` in recognition detail. A successful empty OCR returns empty result arrays. Duplicate registration names are rejected. Do not replace or unregister the same name through other APIs while the registration exists.
 
 The original WeChat runtime is supplied separately. Building or running this example does not establish permission to redistribute it.
+
+Adapter contract tests use a real MaaFramework tasker/buffer runtime and a mock SDK, so no WeChat installation is required:
+
+```sh
+cmake -S tests/maa -B build-maa-tests -DCMAKE_PREFIX_PATH="<Maa SDK>;<dependencies>"
+cmake --build build-maa-tests
+ctest --test-dir build-maa-tests --output-on-failure
+```
+
+Use the same C++ toolchain/standard library as the Maa SDK and OpenCV binaries. MaaDeps Linux bundles use their supplied Clang/libc++ toolchain (`-DCMAKE_TOOLCHAIN_FILE=<MaaDeps>/cmake/maa-x64-linux-toolchain.cmake`). These tests check adapter contracts; they do not validate vendor runtime compatibility or OCR accuracy.

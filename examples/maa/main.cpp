@@ -46,9 +46,25 @@ int main(int argc, char** argv)
     const auto id = MaaTaskerPostRecognition(tasker.get(), "Custom",
         R"({"custom_recognition":"WeChatOCR","custom_recognition_param":{"threshold":0,"timeout_ms":10000}})", image.get());
     const auto status = MaaTaskerWait(tasker.get(), id);
+    const std::unique_ptr<MaaStringBuffer, decltype(&MaaStringBufferDestroy)>
+        detail(MaaStringBufferCreate(), MaaStringBufferDestroy);
+    MaaNodeId node_id = MaaInvalidId;
+    MaaSize node_count = 1;
+    MaaStatus task_status = MaaStatus_Invalid;
+    MaaRecoId reco_id = MaaInvalidId;
+    MaaBool hit = false;
+    const auto has_detail = detail
+        && MaaTaskerGetTaskDetail(tasker.get(), id, nullptr, &node_id, &node_count, &task_status)
+        && node_count == 1
+        && MaaTaskerGetNodeDetail(tasker.get(), node_id, nullptr, &reco_id, nullptr, nullptr)
+        && MaaTaskerGetRecognitionDetail(tasker.get(), reco_id, nullptr, nullptr, &hit,
+                                         nullptr, detail.get(), nullptr, nullptr);
     // MaaTaskerWait joins this recognition; normal applications must also stop
     // and join every other task before releasing this borrowed registration.
     const auto unregister_status = wco_maa_unregister(registration);
-    std::cout << "Maa task status: " << status << '\n';
-    return status == MaaStatus_Succeeded && unregister_status == WCO_OK ? 0 : 1;
+    std::cout << "Maa task status: " << status << "; hit: " << hit << '\n';
+    if (has_detail) {
+        std::cout << MaaStringBufferGet(detail.get()) << '\n';
+    }
+    return status == MaaStatus_Succeeded && has_detail && unregister_status == WCO_OK ? 0 : 1;
 }
