@@ -172,7 +172,14 @@ bool pipe_io(HANDLE handle, bool reading, uint8_t* data, size_t size,
                 error = windows_error(reading ? "ReadFile" : "WriteFile", code);
                 return false;
             }
-            const DWORD waited = WaitForSingleObject(event, static_cast<DWORD>(remaining_ms(deadline)));
+            DWORD waited;
+            do {
+                // Windows waits use the system timer's tick boundaries, which
+                // need not agree with steady_clock/QPC to the last millisecond.
+                // An early WAIT_TIMEOUT must keep waiting on this same I/O;
+                // only the absolute deadline can classify it as a timeout.
+                waited = WaitForSingleObject(event, static_cast<DWORD>(remaining_ms(deadline)));
+            } while (waited == WAIT_TIMEOUT && Clock::now() < deadline);
             if (waited != WAIT_OBJECT_0) {
                 const DWORD wait_error = waited == WAIT_FAILED ? GetLastError() : ERROR_TIMEOUT;
                 // Cancellation is asynchronous. Retain both OVERLAPPED and its
@@ -300,7 +307,10 @@ bool pipe_io(int fd, bool reading, uint8_t* data, size_t size,
             if (errno == EINTR) continue;
             error = posix_error("poll"); return false;
         }
-        if (!result) { error = "I/O deadline exceeded"; return false; }
+        if (!result) {
+            if (Clock::now() < deadline) continue;
+            error = "I/O deadline exceeded"; return false;
+        }
         if (ready.revents & POLLNVAL) { error = "invalid worker pipe"; return false; }
         const size_t chunk = std::min<size_t>(size, 65536);
         const ssize_t count = reading ? read(fd, data, chunk) : write(fd, data, chunk);

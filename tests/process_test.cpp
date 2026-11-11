@@ -194,6 +194,7 @@ void tests(const std::filesystem::path& executable)
     auto before = Clock::now();
     require(!process.read_all(received.data(), 1, before + 100ms, error), "idle read did not time out");
     require(error.find("deadline") != std::string::npos, "read returned the wrong failure: " + error);
+    require(Clock::now() >= before + 100ms, "read reported timeout before its absolute deadline");
     require(Clock::now() - before < 1500ms, "read deadline did not bound the wait");
     process.stop();
 
@@ -202,6 +203,7 @@ void tests(const std::filesystem::path& executable)
     before = Clock::now();
     require(!process.write_all(oversized.data(), oversized.size(), before + 100ms, error), "blocked write did not time out");
     require(error.find("deadline") != std::string::npos, "write returned the wrong failure: " + error);
+    require(Clock::now() >= before + 100ms, "write reported timeout before its absolute deadline");
     require(Clock::now() - before < 1500ms, "write deadline did not bound the wait");
     before = Clock::now();
     process.stop();
