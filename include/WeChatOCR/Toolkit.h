@@ -24,7 +24,7 @@ typedef struct WcoRuntimeInfo {
     uint32_t protocol;
     const char* runtime_dir;
     const char* ocr_path;
-    /* Empty if the installed version cannot be determined without starting it. */
+    /* Optional version inferred from directory names; empty when unknown. */
     const char* version;
     const char* source;
 } WcoRuntimeInfo;
