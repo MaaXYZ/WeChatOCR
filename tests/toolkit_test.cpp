@@ -30,20 +30,26 @@ std::string utf8(const std::filesystem::path& value) {
     return {reinterpret_cast<const char*>(text.data()), text.size()};
 }
 
-void binary_fixture(const std::filesystem::path& destination) {
+#ifdef _WIN32
+constexpr bool native_windows = true;
+#else
+constexpr bool native_windows = false;
+#endif
+
+void binary_fixture(const std::filesystem::path& destination, bool windows = native_windows) {
     std::filesystem::create_directories(destination.parent_path());
     std::array<uint8_t, 512> header{};
-#ifdef _WIN32
+    if (windows) {
     header[0] = 'M'; header[1] = 'Z'; header[0x3c] = 0x80;
     header[0x80] = 'P'; header[0x81] = 'E';
     header[0x84] = 0x64; header[0x85] = 0x86;
     header[0x86] = 1; header[0x94] = 0xf0;
     header[0x98] = 0x0b; header[0x99] = 2;
-#else
+    } else {
     header[0] = 0x7f; header[1] = 'E'; header[2] = 'L'; header[3] = 'F';
     header[4] = 2; header[5] = 1; header[6] = 1;
     header[16] = 2; header[18] = 62; header[20] = 1; header[52] = 64;
-#endif
+    }
     std::ofstream file(destination, std::ios::binary);
     file.write(reinterpret_cast<const char*>(header.data()), header.size());
     require(bool(file), "cannot create binary discovery fixture");
@@ -211,6 +217,33 @@ void test_discovery_errors_and_empty() {
     status(wco_create(nullptr, nullptr), WCO_INVALID_ARGUMENT, "NULL output with automatic defaults");
 }
 
+void test_native_candidates_only() {
+    Sandbox box;
+#ifdef _WIN32
+    const auto foreign_entry = box.runtime / "wxocr";
+    binary_fixture(foreign_entry, false);
+    binary_fixture(box.runtime / "libmmmojo.so", false);
+    binary_fixture(box.runtime / "libwxocr.so", false);
+    std::filesystem::create_directories(box.runtime / "ocr_model");
+    std::ofstream(box.runtime / "ocr_model" / "test.xnet") << "foreign runtime model";
+#else
+    const auto foreign_entry = box.runtime / "wxocr.dll";
+    binary_fixture(foreign_entry, true);
+    binary_fixture(box.runtime / "mmmojo_64.dll", true);
+    binary_fixture(box.runtime.parent_path() / "weixin.exe", true);
+#endif
+    // Both formats are structurally valid and both mmmojo libraries coexist.
+    // Public Toolkit APIs must still offer only entry points for the host OS.
+    Scan scan{box.root};
+    auto list = scan.discover();
+    require(wco_runtime_list_count(list.get()) == 1, "discovery offered a runtime for another operating system");
+    const auto native = candidate(list);
+    require(std::filesystem::equivalent(utf8_path(native.ocr_path), box.entry), "wrong native entry point");
+    const auto runtime_path = utf8(box.runtime), foreign_path = utf8(foreign_entry);
+    WcoRuntimeInfo foreign{sizeof(WcoRuntimeInfo), 4, runtime_path.c_str(), foreign_path.c_str(), "", "test"};
+    status(wco_validate_runtime(&foreign), WCO_RUNTIME_INCOMPATIBLE, "foreign operating system runtime");
+}
+
 void test_auto_create_and_engine_info(const std::filesystem::path& worker) {
     Sandbox box;
     Scan scan{box.root};
@@ -296,6 +329,7 @@ int main(int argc, char** argv) {
         test_defaults_and_images();
         test_lists_and_validation();
         test_discovery_errors_and_empty();
+        test_native_candidates_only();
         test_auto_create_and_engine_info(worker);
         test_candidate_fallback_and_budget(worker);
         std::cout << "Toolkit defaults, discovery, ownership, validation and auto-create tests passed\n";
