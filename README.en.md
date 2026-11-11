@@ -17,12 +17,12 @@ wechatocr-worker
 User-provided WeChat OCR runtime
 ```
 
-**Version 0.1.0 is experimental.** Windows x64 and Linux x64 builds have automated tests. Compatibility, OCR accuracy and performance with a real Tencent runtime require separate validation on the target machine. A successful build does not establish support for every WeChat version.
+**Version 0.1.0 is experimental.** A real-runtime smoke test passed with the official Linux x64 WeChat `4.1.13.26` runtime, covering English/Chinese text, multiple image sizes, pixel formats and non-contiguous ROIs. Windows vendor runtimes, game-image accuracy and long-term stability still need validation. See the [runtime record](docs/runtime.md#已验证记录).
 
 ## Features
 
 - C++20 implementation and C ABI, without OpenCV, Python or protobuf build dependencies.
-- BGR, RGB, BGRA and grayscale memory images, with explicit dimensions and stride.
+- BGR, RGB, BGRA and grayscale memory images, with explicit dimensions and stride. BGRA alpha is ignored.
 - Structured UTF-8 text, geometry and original confidence values relative to the input image.
 - Persistent initialization and synchronous calls with deadlines.
 - Third-party components remain inside a private worker. The SDK can recover after a timeout or disconnection by replacing the process.
@@ -33,6 +33,8 @@ The public API accepts memory images. The current runtime adapter writes a PNG i
 ## Download
 
 Download your SDK archive from [Releases](https://github.com/MaaXYZ/WeChatOCR/releases) and verify it against `SHA256SUMS`. Match the architectures of the library, worker and application.
+
+Windows release packages target Windows 10 x64 or newer; the SDK and worker link the MSVC CRT statically. Linux packages are built on Ubuntu 24.04 and require glibc 2.39 or newer. Build from source for other environments, and also satisfy the vendor runtime's own system dependencies.
 
 Tencent executables, libraries and OCR models are not included. Supply a local runtime you are entitled to use; see [runtime setup and validation](docs/runtime.md).
 
@@ -85,6 +87,8 @@ Only Custom nodes explicitly configured to use the adapter are affected. Install
 See [architecture](docs/architecture.md) for process boundaries and error handling. CI builds, tests and installs on Windows and Linux. Pushing a `v*` tag publishes archives and SHA-256 checksums only after both platform test jobs succeed.
 
 CI does not download or execute Tencent components. Run the separate [runtime validation checklist](docs/runtime.md#验证清单) for vendor compatibility and performance.
+
+Use [`examples/python/smoke.py`](examples/python/smoke.py) to repeat synthetic text, blank-image and recovery checks locally. Pillow is an optional dependency of this developer script, not an SDK runtime dependency.
 
 ## References and acknowledgements
 

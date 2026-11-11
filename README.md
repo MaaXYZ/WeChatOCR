@@ -17,12 +17,12 @@ wechatocr-worker
 使用者提供的微信 OCR runtime
 ```
 
-**0.1.0 是实验版本。** 仓库提供 Windows x64 和 Linux x64 的构建与自动化测试；真实微信 runtime 的兼容性、识别准确率和性能需要在目标机器上单独验证。请勿将构建成功视为任意微信版本均可使用。
+**0.1.0 是实验版本。** 已使用官方 Linux x64 微信 `4.1.13.26` runtime 完成真实 OCR 冒烟测试，包含中英文、多尺寸、像素格式和非连续 ROI 输入。Windows 真实 runtime、游戏样本准确率和长期稳定性仍需验证；具体记录见 [runtime 文档](docs/runtime.md#已验证记录)。
 
 ## 功能
 
 - C++20 实现、稳定 C ABI，无 OpenCV、Python 或 protobuf 构建依赖。
-- 接收内存中的 BGR、RGB、BGRA、灰度图片，显式传入宽、高、stride。
+- 接收内存中的 BGR、RGB、BGRA、灰度图片，显式传入宽、高、stride；BGRA 的 alpha 通道忽略。
 - 返回 UTF-8 文本、位置与原始置信度；坐标相对传入图片。
 - 初始化一次、多次识别；同步调用带 deadline。
 - 将微信组件装入私有 worker；超时或断连后回收进程，后续调用可以恢复。
@@ -33,6 +33,8 @@ wechatocr-worker
 ## 下载
 
 从 [Releases](https://github.com/MaaXYZ/WeChatOCR/releases) 下载对应平台的 SDK，使用 `SHA256SUMS` 校验完整性。库、worker 和应用程序的架构需要匹配。
+
+Windows 发布包以 Windows 10 x64 为最低系统版本，SDK 与 worker 静态链接 MSVC CRT。Linux 发布包在 Ubuntu 24.04 构建，要求 glibc 2.39 或更新；其他环境可以从源码构建，腾讯 runtime 自身的系统依赖仍需满足。
 
 发布包不包含腾讯的 exe、dll、so 或 OCR 模型。请另行准备有权使用的本地 runtime，详见 [runtime 配置与验证](docs/runtime.md)。
 
@@ -87,6 +89,8 @@ wco_create(options, &engine)
 架构、进程边界和错误处理见 [architecture](docs/architecture.md)。CI 在 Windows 和 Linux 上构建、运行自动化测试并验证安装。推送 `v*` tag 后，发布流程在两个平台的测试均通过时上传安装包和 SHA-256 校验和。
 
 CI 不下载或运行腾讯组件。真实 runtime 的冒烟测试、版本矩阵与性能测量遵循 [runtime 验证清单](docs/runtime.md#验证清单)。
+
+使用 [`examples/python/smoke.py`](examples/python/smoke.py) 可以在本机重跑合成文字图、空图和恢复检查；该脚本可选依赖 Pillow，不属于 SDK 运行依赖。
 
 ## 参考与致谢
 

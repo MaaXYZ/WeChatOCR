@@ -11,5 +11,7 @@ Initial experimental release.
 - Windows x64 and Linux x64 build, test and package workflows.
 - Optional MaaFramework custom recognition adapter.
 - Documentation and acknowledgements for the reference projects.
+- A real-runtime smoke test using the official Linux x64 WeChat 4.1.13.26 package: Chinese/English text, 30 mixed-size/format/ROI calls, blank-image handling, worker/vendor crash recovery, in-flight timeout recovery and process/file cleanup.
+- A reproducible optional Python smoke script with synthetic input and process recovery checks.
 
-Tencent executables, libraries and OCR models are not distributed. Automated tests cover the SDK and protocol behavior; compatibility and accuracy with a real Tencent runtime require separate runtime validation.
+Tencent executables, libraries and OCR models are not distributed. Automated tests cover the SDK and protocol behavior. The Linux runtime record is version-specific; Windows vendor runtimes, game-image accuracy and long-term stability remain outside the completed validation scope.

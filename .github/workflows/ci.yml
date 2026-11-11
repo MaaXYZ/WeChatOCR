@@ -25,6 +25,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check optional Python example syntax
+        run: python -m py_compile examples/python/smoke.py
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON ${{ matrix.cmake_args }}
       - name: Build
