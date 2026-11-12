@@ -7402,7 +7402,7 @@
   },
   "sources": {
     "MaaCommonAssets": "https://github.com/MaaXYZ/MaaCommonAssets/tree/dabcd4681ac990dc4361de26416d986abd80e4aa/OCR/ppocr_v6",
-    "WeChatOCR": "https://github.com/MaaXYZ/WeChatOCR/releases/tag/v0.2.1",
+    "WeChatOCR": "https://github.com/MaaXYZ/WeChatOCR-SDK/releases/tag/v0.2.1",
     "MaaFramework": "https://github.com/MaaXYZ/MaaFramework/commit/2df6f033aa4dd45ff1f2ec292a18ebc2b8eebc8f"
   },
   "runtime_versions": {

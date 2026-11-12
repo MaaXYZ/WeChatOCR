@@ -70,7 +70,7 @@ jobs:
           destination = pathlib.Path("dist")
           destination.mkdir()
           archive_format = "zip" if platform.startswith("windows") else "gztar"
-          shutil.make_archive(str(destination / f"WeChatOCR-{tag}-{platform}"), archive_format, "stage")
+          shutil.make_archive(str(destination / f"WeChatOCR-SDK-{tag}-{platform}"), archive_format, "stage")
           PY
       - name: Upload release package
         uses: actions/upload-artifact@v4
@@ -108,7 +108,7 @@ jobs:
           checksums = [f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in assets]
           (destination / "SHA256SUMS").write_text("".join(checksums), encoding="utf-8")
           tag = os.environ["RELEASE_TAG"]
-          notes = f"""WeChatOCR {tag}
+          notes = f"""WeChatOCR-SDK {tag}
 
           Native C ABI SDK for Windows/Linux x64.
 
@@ -118,7 +118,7 @@ jobs:
           - C ABI v1 remains compatible. Tencent runtime files are provided separately.
 
           Tested with Windows WeChat 4.1.15.13 / OCR plugin 8096 and Linux WeChat 4.1.13.26.
-          See [README](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/README.md) and [changelog](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/CHANGELOG.md). Verify archives with `SHA256SUMS`.
+          See [README](https://github.com/MaaXYZ/WeChatOCR-SDK/blob/{tag}/README.md) and [changelog](https://github.com/MaaXYZ/WeChatOCR-SDK/blob/{tag}/CHANGELOG.md). Verify archives with `SHA256SUMS`.
           """
           pathlib.Path("release-notes.md").write_text(notes, encoding="utf-8")
           PY

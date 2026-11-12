@@ -1,6 +1,6 @@
 # Windows OCR 对比实测（2026-11-12）
 
-[English](README.en.md) · [返回 WeChatOCR](../../README.md)
+[English](README.en.md) · [返回 WeChatOCR-SDK](../../README.md)
 
 在这批样本上，PP-OCRv6 small CPU 在准确率与速度之间最均衡，tiny CPU 最快。微信与 small 的 ROI 完整文本正确率相同，整屏已标注目标命中略高，但小区域调用明显更慢。当前 MaaFramework 调用链中的 DirectML 延迟高于 CPU，固定尺寸复测也未反转。
 
@@ -9,7 +9,7 @@
 ## 环境与样本
 
 - Windows 11 build 26200；Ryzen 7 9800X3D（8 核 / 16 线程）；96 GiB RAM；RTX 4080 SUPER 16 GB，驱动 617.42。
-- [WeChatOCR v0.2.1 正式发布包](https://github.com/MaaXYZ/WeChatOCR/releases/tag/v0.2.1)，微信 4.1.15.13 / OCR 插件 8096，使用 vendor 默认设置，未强制其内部计算设备。
+- [WeChatOCR-SDK v0.2.1 正式发布包](https://github.com/MaaXYZ/WeChatOCR-SDK/releases/tag/v0.2.1)，微信 4.1.15.13 / OCR 插件 8096，使用 vendor 默认设置，未强制其内部计算设备。
 - PPOCR 使用 [MaaCommonAssets `dabcd468` 的 v6 tiny / small ONNX 模型](https://github.com/MaaXYZ/MaaCommonAssets/tree/dabcd4681ac990dc4361de26416d986abd80e4aa/OCR/ppocr_v6)。CPU 每个模型配置 4 线程；DirectML 显式选择 DXGI 0 号 RTX 4080 SUPER。
 - [MaaFramework `2df6f033`](https://github.com/MaaXYZ/MaaFramework/commit/2df6f033aa4dd45ff1f2ec292a18ebc2b8eebc8f)；ONNX Runtime 1.29.0；DirectML 1.15.4。
 - 50 个真实游戏 ROI，来自 `PipelineSmoking` 和 `hbr_battle` 测试资源中的 4 张截图；16 条已知文字各生成清晰、小字、模糊三个版本，共 48 张；另有 4 张空图。整屏性能使用 5 张 1280×720 截图。

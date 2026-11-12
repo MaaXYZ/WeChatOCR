@@ -1,10 +1,10 @@
-# WeChatOCR
+# WeChatOCR-SDK
 
 [English](README.en.md)
 
-微信 OCR 原生 SDK：C ABI 动态库，支持内存截图，返回 UTF-8 文本、文字框和置信度。可独立使用，也可接入 MaaFramework。
+通用的微信 OCR 原生 SDK，提供 C ABI 动态库，供应用传入内存图像并获取 UTF-8 文本、文字框和置信度。
 
-从 [Releases](https://github.com/MaaXYZ/WeChatOCR/releases) 下载 SDK。微信 runtime 由本机安装或自行提供，不包含在发布包中。
+从 [Releases](https://github.com/MaaXYZ/WeChatOCR-SDK/releases) 下载 SDK。微信 runtime 由本机安装或自行提供，不包含在发布包中。
 
 支持 Windows 10 x64、Linux x64；Linux 发布包要求 glibc 2.39+。已实测 Windows 微信 4.1.15.13 / OCR 插件 8096，以及 Linux 微信 4.1.13.26。
 
@@ -24,7 +24,7 @@ PPOCR CPU 每个模型配置 4 线程，DirectML 显式使用 RTX 4080 SUPER；�
 
 这批样本中，small CPU 最均衡，tiny CPU 最快；微信与 small 的游戏 ROI 都正确识别了 47/50 个，整屏已标注目标命中为微信 44/50、small 41/50。DirectML 经设备核对和固定尺寸复测，在当前调用链下延迟仍高于 CPU。这是本机小样本结果，不代表通用 OCR 排行。
 
-[完整报告](https://github.com/MaaXYZ/WeChatOCR/blob/main/benchmarks/2026-11-12-windows/README.md) 包含 P95、字符错误率 CER、冷启动、内存及测试方法，并提供[逐条对比 HTML（下载后打开）](https://github.com/MaaXYZ/WeChatOCR/blob/main/benchmarks/2026-11-12-windows/report.html)和[原始数据与脚本快照](https://github.com/MaaXYZ/WeChatOCR/raw/refs/heads/main/benchmarks/2026-11-12-windows/evidence.zip)。
+[完整报告](https://github.com/MaaXYZ/WeChatOCR-SDK/blob/main/benchmarks/2026-11-12-windows/README.md) 包含 P95、字符错误率 CER、冷启动、内存及测试方法，并提供[逐条对比 HTML（下载后打开）](https://github.com/MaaXYZ/WeChatOCR-SDK/blob/main/benchmarks/2026-11-12-windows/report.html)和[原始数据与脚本快照](https://github.com/MaaXYZ/WeChatOCR-SDK/raw/refs/heads/main/benchmarks/2026-11-12-windows/evidence.zip)。
 
 ## 接入
 
@@ -59,7 +59,7 @@ WcoStatus recognize_rgb(const void* pixels, uint64_t size, uint32_t width, uint3
 
 `WcoImageView` 支持 BGR、RGB、BGRA、灰度及带 padding 的 stride；BGRA 忽略 alpha。重复识别时复用 engine，出错读取 `wco_last_error()`。结果由 SDK 释放。
 
-MaaFramework 接入见 [示例](examples/maa)。SDK 自动发现接口见 [Toolkit.h](include/WeChatOCR/Toolkit.h)。
+Python 调用与运行验证见 [示例](examples/python/smoke.py)。SDK 自动发现接口见 [Toolkit.h](include/WeChatOCR/Toolkit.h)。
 
 ## 构建
 

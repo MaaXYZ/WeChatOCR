@@ -1,6 +1,6 @@
 # Windows OCR comparison (2026-11-12)
 
-[简体中文](README.md) · [Back to WeChatOCR](../../README.en.md)
+[简体中文](README.md) · [Back to WeChatOCR-SDK](../../README.en.md)
 
 On these samples, PP-OCRv6 small CPU offers the best balance of accuracy and latency, while tiny CPU is fastest. WeChat and small have the same complete-text ROI accuracy; WeChat hits more annotated full-screen targets but has substantially higher small-ROI latency. DirectML is slower than CPU in this MaaFramework pipeline, including fixed-size verification.
 
@@ -9,7 +9,7 @@ On these samples, PP-OCRv6 small CPU offers the best balance of accuracy and lat
 ## Environment and samples
 
 - Windows 11 build 26200; Ryzen 7 9800X3D (8 cores / 16 threads); 96 GiB RAM; RTX 4080 SUPER 16 GB, driver 617.42.
-- The official [WeChatOCR v0.2.1 Windows package](https://github.com/MaaXYZ/WeChatOCR/releases/tag/v0.2.1), WeChat 4.1.15.13 / OCR plugin 8096, with vendor defaults. Its internal compute device was not forced.
+- The official [WeChatOCR-SDK v0.2.1 Windows package](https://github.com/MaaXYZ/WeChatOCR-SDK/releases/tag/v0.2.1), WeChat 4.1.15.13 / OCR plugin 8096, with vendor defaults. Its internal compute device was not forced.
 - PPOCR uses [MaaCommonAssets `dabcd468` v6 tiny / small ONNX models](https://github.com/MaaXYZ/MaaCommonAssets/tree/dabcd4681ac990dc4361de26416d986abd80e4aa/OCR/ppocr_v6). CPU configures four threads per model; DirectML explicitly selects DXGI adapter 0, the RTX 4080 SUPER.
 - [MaaFramework `2df6f033`](https://github.com/MaaXYZ/MaaFramework/commit/2df6f033aa4dd45ff1f2ec292a18ebc2b8eebc8f); ONNX Runtime 1.29.0; DirectML 1.15.4.
 - 50 game ROIs from four screenshots in the `PipelineSmoking` and `hbr_battle` test resources; 16 known text strings rendered in clean, small-text and blurred conditions, totaling 48 images; four additional blank images. Full-screen latency uses five 1280×720 screenshots.

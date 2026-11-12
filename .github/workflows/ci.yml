@@ -44,6 +44,6 @@ jobs:
       - name: Upload installed SDK
         uses: actions/upload-artifact@v4
         with:
-          name: WeChatOCR-${{ matrix.platform }}-${{ github.sha }}
+          name: WeChatOCR-SDK-${{ matrix.platform }}-${{ github.sha }}
           path: stage/
           if-no-files-found: error

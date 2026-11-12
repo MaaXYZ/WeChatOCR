@@ -1,10 +1,10 @@
-# WeChatOCR
+# WeChatOCR-SDK
 
 [简体中文](README.md)
 
-A native WeChat OCR SDK with a C ABI: pass memory images and receive UTF-8 text, geometry and confidence. Use it independently or with MaaFramework.
+A general-purpose native WeChat OCR SDK with a C ABI: applications pass in-memory images and receive UTF-8 text, geometry and confidence.
 
-Download the SDK from [Releases](https://github.com/MaaXYZ/WeChatOCR/releases). Install WeChat locally or supply its runtime separately; vendor files are not included.
+Download the SDK from [Releases](https://github.com/MaaXYZ/WeChatOCR-SDK/releases). Install WeChat locally or supply its runtime separately; vendor files are not included.
 
 Platforms: Windows 10 x64 and Linux x64; Linux release packages require glibc 2.39+. Real-runtime tests cover Windows WeChat 4.1.15.13 / OCR plugin 8096 and Linux WeChat 4.1.13.26.
 
@@ -24,7 +24,7 @@ PPOCR CPU uses four threads per model; DirectML explicitly selects the RTX 4080 
 
 On these samples, small CPU offers the best balance and tiny CPU is fastest. WeChat and small each read 47/50 game ROIs correctly; full-screen annotated-target hits were 44/50 for WeChat and 41/50 for small. Device verification and fixed-size repeats confirmed higher DirectML latency than CPU in this pipeline. These local, limited samples are not a general OCR ranking.
 
-The [full report](https://github.com/MaaXYZ/WeChatOCR/blob/main/benchmarks/2026-11-12-windows/README.en.md) includes P95, character error rate (CER), startup, memory and methodology, with [per-sample HTML (download and open locally)](https://github.com/MaaXYZ/WeChatOCR/blob/main/benchmarks/2026-11-12-windows/report.html) and [raw data and script snapshots](https://github.com/MaaXYZ/WeChatOCR/raw/refs/heads/main/benchmarks/2026-11-12-windows/evidence.zip).
+The [full report](https://github.com/MaaXYZ/WeChatOCR-SDK/blob/main/benchmarks/2026-11-12-windows/README.en.md) includes P95, character error rate (CER), startup, memory and methodology, with [per-sample HTML (download and open locally)](https://github.com/MaaXYZ/WeChatOCR-SDK/blob/main/benchmarks/2026-11-12-windows/report.html) and [raw data and script snapshots](https://github.com/MaaXYZ/WeChatOCR-SDK/raw/refs/heads/main/benchmarks/2026-11-12-windows/evidence.zip).
 
 ## Use
 
@@ -59,7 +59,7 @@ WcoStatus recognize_rgb(const void* pixels, uint64_t size, uint32_t width, uint3
 
 `WcoImageView` accepts BGR, RGB, BGRA and grayscale with row stride; BGRA alpha is ignored. Reuse the engine for repeated calls. Read `wco_last_error()` on failure and release results through the SDK.
 
-See the [MaaFramework example](examples/maa) and discovery API in [Toolkit.h](include/WeChatOCR/Toolkit.h).
+See the [Python usage and runtime validation example](examples/python/smoke.py) and discovery API in [Toolkit.h](include/WeChatOCR/Toolkit.h).
 
 ## Build
 
