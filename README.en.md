@@ -8,6 +8,24 @@ Download the SDK from [Releases](https://github.com/MaaXYZ/WeChatOCR/releases). 
 
 Platforms: Windows 10 x64 and Linux x64; Linux release packages require glibc 2.39+. Real-runtime tests cover Windows WeChat 4.1.15.13 / OCR plugin 8096 and Linux WeChat 4.1.13.26.
 
+## Local comparison with PP-OCRv6
+
+Tested on 2026-11-12 using the same MaaFramework entry point on Windows 11 / Ryzen 7 9800X3D / RTX 4080 SUPER. Accuracy is complete-text matching across 50 game ROIs and 48 generated text images. Latency includes detection and recognition and reports warmed P50.
+
+| Configuration | Complete-text accuracy (98 samples) | Game ROI P50 | 1280×720 full-screen P50 |
+| --- | ---: | ---: | ---: |
+| PP-OCRv6 tiny CPU | 73.5% | 1.5 ms | 50.7 ms |
+| PP-OCRv6 tiny DirectML | 73.5% | 26.8 ms | 128.7 ms |
+| PP-OCRv6 small CPU | 93.9% | 5.6 ms | 143.5 ms |
+| PP-OCRv6 small DirectML | 93.9% | 29.6 ms | 196.2 ms |
+| WeChat OCR | 93.9% | 109.0 ms | 174.8 ms |
+
+PPOCR CPU uses four threads per model; DirectML explicitly selects the RTX 4080 SUPER. WeChat uses vendor defaults without forcing its internal compute device. ROI images are pre-cropped; no `expected` or `replace` filters correct the output.
+
+On these samples, small CPU offers the best balance and tiny CPU is fastest. WeChat and small each read 47/50 game ROIs correctly; full-screen annotated-target hits were 44/50 for WeChat and 41/50 for small. Device verification and fixed-size repeats confirmed higher DirectML latency than CPU in this pipeline. These local, limited samples are not a general OCR ranking.
+
+The [full report](https://github.com/MaaXYZ/WeChatOCR/blob/main/benchmarks/2026-11-12-windows/README.en.md) includes P95, character error rate (CER), startup, memory and methodology, with [per-sample HTML (download and open locally)](https://github.com/MaaXYZ/WeChatOCR/blob/main/benchmarks/2026-11-12-windows/report.html) and [raw data and script snapshots](https://github.com/MaaXYZ/WeChatOCR/raw/refs/heads/main/benchmarks/2026-11-12-windows/evidence.zip).
+
 ## Use
 
 Create an engine with automatic local discovery. See [runtime setup](docs/runtime.md) for custom locations. This compilable C function processes an application-provided image:
