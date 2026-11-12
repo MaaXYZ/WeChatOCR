@@ -5,9 +5,11 @@
 #include "wire.h"
 
 #include <cstdio>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <thread>
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
@@ -56,6 +58,25 @@ void status(wco::wire::Writer& writer, WcoStatus code, const std::string& error)
 struct ImageFile {
     std::filesystem::path path;
     ~ImageFile() { if (!path.empty()) { std::error_code error; std::filesystem::remove(path, error); } }
+    bool remove() {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+        for (;;) {
+            std::error_code error;
+            std::filesystem::remove(path, error);
+            if (!error) { path.clear(); return true; }
+#ifdef _WIN32
+            // The vendor may send its result just before closing the input handle.
+            if ((error.value() == ERROR_SHARING_VIOLATION || error.value() == ERROR_ACCESS_DENIED)
+                && std::chrono::steady_clock::now() < deadline) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+#else
+            (void)deadline;
+#endif
+            return false;
+        }
+    }
 };
 std::string utf8(const std::filesystem::path& path) {
     auto s = path.u8string(); return {reinterpret_cast<const char*>(s.data()), s.size()};
@@ -108,7 +129,9 @@ int main() {
                     if (!file) throw std::runtime_error("cannot write private temporary PNG");
                 }
                 wco::RuntimeResult result;
-                if (!backend->recognize(utf8(image.path), result, error)) status(response, WCO_WORKER_ERROR, error);
+                const bool recognized = backend->recognize(utf8(image.path), result, error);
+                if (!image.remove()) throw std::runtime_error("cannot remove private temporary PNG");
+                if (!recognized) status(response, WCO_WORKER_ERROR, error);
                 else if (result.vendor_error) status(response, WCO_OCR_FAILED, "vendor OCR error " + std::to_string(result.vendor_error));
                 else if (result.width != width || result.height != height) status(response, WCO_OCR_FAILED, "vendor returned unexpected image dimensions");
                 else {

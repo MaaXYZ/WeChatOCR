@@ -210,6 +210,19 @@ void fixtures()
             "plugin pairing bound/natural preference failed");
     for (const auto& candidate : bounded)
         require(candidate.source.find("heuristic-pair") != std::string::npos,"heuristic pairing was not labelled");
+
+    Sandbox flat;
+    const auto flat4 = windows_runtime(flat.root/"Weixin"/"4.1.15.13",flat.root/"WeChatOcr"/"8096"/"extracted",4);
+    const auto plugin = path(flat4.ocr_path).parent_path();
+    fs::rename(plugin/"Model"/"test.xnet",plugin/"text_det_fp16_v2.xnet");
+    fs::remove(plugin/"Model");
+    valid(flat4);
+    const auto flat_found = discover({flat.root});
+    require(flat_found.size() == 1 && same_object(flat_found.front().ocr_path,flat4.ocr_path),
+            "Windows plugin with models beside wxocr.dll was not discovered");
+    file(plugin/"text_det_fp16_v2.xnet",{});
+    invalid(flat4,"model");
+    require(discover({flat.root}).empty(),"empty flat model was accepted");
 }
 } // namespace
 

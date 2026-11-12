@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Optional real-runtime smoke test; requires Pillow, the SDK, and a local runtime.
 
+Windows process checks also require psutil.
 No vendor files are downloaded. Timings describe this invocation, not a benchmark
-guarantee. The Linux-only recovery check kills only descendants of this process.
+guarantee. Recovery checks kill only descendants of this process.
 """
 
 import argparse
@@ -21,6 +22,12 @@ try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError as error:
     raise SystemExit("Install the optional smoke-test dependency: python -m pip install Pillow") from error
+
+if os.name == "nt":
+    try:
+        import psutil
+    except ImportError as error:
+        raise SystemExit("Windows process checks require: python -m pip install psutil") from error
 
 
 class Options(c.Structure):
@@ -160,7 +167,17 @@ def recognize(sdk, engine, image, pixel_format=3, padded=False, timeout_ms=15000
 
 
 def descendants(parent):
-    """Linux process identities, scoped to descendants of the invoking script."""
+    """Process identities, scoped to descendants of the invoking script."""
+    if os.name == "nt":
+        result = {}
+        for process in psutil.Process(parent).children(recursive=True):
+            try:
+                with process.oneshot():
+                    result[process.pid] = {"name": process.name(), "parent": process.ppid(),
+                                           "start_time": process.create_time()}
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return result
     if not pathlib.Path("/proc").is_dir():
         return {}
     result = {}
@@ -185,6 +202,13 @@ def descendants(parent):
 def still_running(identities):
     running = []
     for pid, identity in identities.items():
+        if os.name == "nt":
+            try:
+                if psutil.Process(pid).create_time() == identity["start_time"]:
+                    running.append(pid)
+            except psutil.NoSuchProcess:
+                pass
+            continue
         try:
             fields = pathlib.Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
             if fields[0] != "Z" and fields[19] == identity["start_time"]:
@@ -192,6 +216,27 @@ def still_running(identities):
         except (FileNotFoundError, ProcessLookupError):
             continue
     return sorted(running)
+
+
+def windows_process(pid, identity):
+    process = psutil.Process(pid)
+    if process.create_time() != identity["start_time"]:
+        raise RuntimeError(f"process identity changed: {pid}")
+    return process
+
+
+def kill_process(pid, identity):
+    if os.name == "nt":
+        windows_process(pid, identity).kill()
+    else:
+        os.kill(pid, signal.SIGKILL)
+
+
+def pause_process(pid, identity):
+    if os.name == "nt":
+        windows_process(pid, identity).suspend()
+    else:
+        os.kill(pid, signal.SIGSTOP)
 
 
 def main():
@@ -208,13 +253,11 @@ def main():
     parser.add_argument("--protocol", type=int, choices=(0, 3, 4), default=0)
     parser.add_argument("--timeout-ms", type=int, default=15000)
     parser.add_argument("--exercise-recovery", action="store_true",
-                        help="Linux: test worker/vendor crash and an in-flight deadline, then verify recovery")
+                        help="Test worker/vendor crash and an in-flight deadline, then verify recovery")
     parser.add_argument("--output", type=pathlib.Path, help="Optional JSON report filename")
     args = parser.parse_args()
     if args.iterations < 1 or args.timeout_ms < 1:
         parser.error("iterations and timeout must be positive")
-    if args.exercise_recovery and os.name != "posix":
-        parser.error("--exercise-recovery is currently implemented only on Linux")
     sdk = load_sdk(args.sdk.resolve())
     report = {"sdk_version": sdk.wco_version().decode(), "iterations": args.iterations, "calls": []}
     engine = c.c_void_p()
@@ -278,10 +321,11 @@ def main():
             if args.exercise_recovery:
                 old_tree = descendants(os.getpid())
                 tracked_processes.update(old_tree)
-                workers = [pid for pid, info in old_tree.items() if info["name"] == "wechatocr-worke" or info["name"] == "wechatocr-worker"]
+                workers = [pid for pid, info in old_tree.items() if info["name"].lower() in
+                           ("wechatocr-worke", "wechatocr-worker", "wechatocr-worker.exe")]
                 if len(workers) != 1:
                     raise RuntimeError(f"expected one private worker, found {workers}")
-                os.kill(workers[0], signal.SIGKILL)
+                kill_process(workers[0], old_tree[workers[0]])
                 broken = recognize(sdk, engine, text_image(sizes[0], font_path), timeout_ms=args.timeout_ms)
                 recovered = recognize(sdk, engine, text_image(sizes[0], font_path), timeout_ms=args.timeout_ms)
                 remaining = descendants(os.getpid())
@@ -292,10 +336,10 @@ def main():
                     failed = True
                 vendor_tree = descendants(os.getpid())
                 tracked_processes.update(vendor_tree)
-                vendors = [pid for pid, info in vendor_tree.items() if info["name"] == "wxocr"]
+                vendors = [pid for pid, info in vendor_tree.items() if info["name"].lower() in ("wxocr", "weixin.exe")]
                 if len(vendors) != 1:
                     raise RuntimeError(f"expected one vendor OCR child, found {vendors}")
-                os.kill(vendors[0], signal.SIGKILL)
+                kill_process(vendors[0], vendor_tree[vendors[0]])
                 vendor_failed = recognize(sdk, engine, text_image(sizes[0], font_path), timeout_ms=args.timeout_ms)
                 vendor_recovered = recognize(sdk, engine, text_image(sizes[0], font_path), timeout_ms=args.timeout_ms)
                 tracked_processes.update(descendants(os.getpid()))
@@ -306,12 +350,12 @@ def main():
                     failed = True
                 timeout_tree = descendants(os.getpid())
                 tracked_processes.update(timeout_tree)
-                timeout_vendors = [pid for pid, info in timeout_tree.items() if info["name"] == "wxocr"]
+                timeout_vendors = [pid for pid, info in timeout_tree.items() if info["name"].lower() in ("wxocr", "weixin.exe")]
                 if len(timeout_vendors) != 1:
                     raise RuntimeError(f"expected one vendor OCR child before timeout, found {timeout_vendors}")
                 # Pause only our vendor child so the real request remains pending
                 # after its PNG is created, regardless of inference speed.
-                os.kill(timeout_vendors[0], signal.SIGSTOP)
+                pause_process(timeout_vendors[0], timeout_tree[timeout_vendors[0]])
                 observed_png = []
                 monitoring_done = threading.Event()
 

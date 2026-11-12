@@ -162,6 +162,7 @@ bool has_xnet(const fs::path& path)
 }
 bool windows_models(const fs::path& plugin)
 {
+    if (has_xnet(plugin)) return true;
     for (const char* name : {"Model", "models", "ocr_model"})
         if (has_xnet(named(plugin, name))) return true;
     return false;
@@ -379,7 +380,7 @@ bool validate_runtime(const RuntimeCandidate& candidate, std::string& error)
                 error = "WeChat 4 requires runtime.parent/weixin.exe (PE64 AMD64): " + error; return false;
             }
             if (!windows_models(entry.parent_path())) {
-                error = "Missing OCR plugin model directory containing an .xnet model: " + utf8(entry.parent_path()); return false;
+                error = "Missing OCR plugin .xnet model: " + utf8(entry.parent_path()); return false;
             }
         }
         return true;

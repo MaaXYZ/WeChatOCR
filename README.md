@@ -6,7 +6,7 @@
 
 从 [Releases](https://github.com/MaaXYZ/WeChatOCR/releases) 下载 SDK。微信 runtime 由本机安装或自行提供，不包含在发布包中。
 
-支持 Windows 10 x64、Linux x64；Linux 发布包要求 glibc 2.39+。已实测 Linux 微信 4.1.13.26；Windows 真实 runtime 尚未验证。
+支持 Windows 10 x64、Linux x64；Linux 发布包要求 glibc 2.39+。已实测 Windows 微信 4.1.15.13 / OCR 插件 8096，以及 Linux 微信 4.1.13.26。
 
 ## 接入
 

@@ -26,6 +26,8 @@ Windows 发布包要求 Windows 10 x64；Linux 发布包在 Ubuntu 24.04 构建�
 
 ## 已验证
 
-Linux 官方 `wechat 4.1.13.26 amd64` 解包后实测成功，未安装或登录：中英文、30 次多尺寸/格式/非连续 ROI、空图，以及崩溃和在途超时恢复。测试环境为 Debian 13 x86_64 / GCC 14；Windows 真实 runtime 尚未验证。
+Windows 本机微信 `4.1.15.13` / OCR 插件 `8096` 自动发现并实测成功：中英文、30 次多尺寸/格式/非连续 ROI、空图、worker 和 OCR 子进程崩溃恢复、在途超时恢复，以及进程和临时文件清理。支持模型位于插件根目录或模型子目录的布局。
+
+Linux 官方 `wechat 4.1.13.26 amd64` 解包后实测成功，未安装或登录：中英文、30 次多尺寸/格式/非连续 ROI、空图，以及崩溃和在途超时恢复。测试环境为 Debian 13 x86_64 / GCC 14。
 
 来源：[腾讯官方 Debian 包](https://dldir1.qq.com/weixin/Universal/Linux/WeChatLinux_x86_64.deb)；SHA-256：`a0db8caeee8d1e6cfe0aa5ce58710270f8d74a90ff4920f53a3fc22aa0956fe9`。复现命令见 [testing.md](testing.md)。

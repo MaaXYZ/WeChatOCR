@@ -6,7 +6,7 @@ A native WeChat OCR SDK with a C ABI: pass memory images and receive UTF-8 text,
 
 Download the SDK from [Releases](https://github.com/MaaXYZ/WeChatOCR/releases). Install WeChat locally or supply its runtime separately; vendor files are not included.
 
-Platforms: Windows 10 x64 and Linux x64; Linux release packages require glibc 2.39+. Linux WeChat 4.1.13.26 has been tested with a real runtime; Windows vendor runtimes have not.
+Platforms: Windows 10 x64 and Linux x64; Linux release packages require glibc 2.39+. Real-runtime tests cover Windows WeChat 4.1.15.13 / OCR plugin 8096 and Linux WeChat 4.1.13.26.
 
 ## Use
 

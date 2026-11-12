@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(WeChatOCR VERSION 0.2.0 LANGUAGES C CXX)
+project(WeChatOCR VERSION 0.2.1 LANGUAGES C CXX)
 
 if(NOT (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
     message(FATAL_ERROR "WeChatOCR currently supports Windows and Linux only")

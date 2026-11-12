@@ -21,7 +21,7 @@ extern "C" {
 #endif
 
 #define WCO_ABI_VERSION 1u
-#define WCO_VERSION "0.2.0"
+#define WCO_VERSION "0.2.1"
 
 typedef struct WcoEngine WcoEngine;
 typedef struct WcoResult WcoResult;

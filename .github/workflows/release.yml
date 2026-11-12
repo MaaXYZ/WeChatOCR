@@ -112,11 +112,12 @@ jobs:
 
           Native C ABI SDK for Windows/Linux x64.
 
-          - Toolkit discovers and validates local runtimes: `wco_create(NULL, &engine)`.
-          - Custom search roots, default options and image-view helpers are included.
+          - Fix discovery of Windows OCR plugins with models beside `wxocr.dll`.
+          - Clean up temporary PNGs after the Windows runtime releases its input handle.
+          - Add Windows process cleanup and crash/timeout recovery checks.
           - C ABI v1 remains compatible. Tencent runtime files are provided separately.
 
-          Tested with Linux WeChat 4.1.13.26; Windows vendor runtime is not yet tested.
+          Tested with Windows WeChat 4.1.15.13 / OCR plugin 8096 and Linux WeChat 4.1.13.26.
           See [README](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/README.md) and [changelog](https://github.com/MaaXYZ/WeChatOCR/blob/{tag}/CHANGELOG.md). Verify archives with `SHA256SUMS`.
           """
           pathlib.Path("release-notes.md").write_text(notes, encoding="utf-8")

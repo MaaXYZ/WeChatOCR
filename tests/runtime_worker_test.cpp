@@ -117,6 +117,25 @@ void tests(const std::filesystem::path& worker, const std::filesystem::path& lib
     instance.reset();
     private_directories_removed(box);
 
+#ifdef _WIN32
+    box.mode("locked-input"); instance = engine(box, worker, version);
+    line(recognize(instance.get(), WCO_PIXEL_BGR, bgr, 8), rgb);
+    temporary_removed(box);
+    instance.reset();
+    private_directories_removed(box);
+    for (const uint32_t timeout : {50u, 1000u}) {
+        box.mode("locked-input-persistent"); instance = engine(box, worker, version);
+        recognize(instance.get(), WCO_PIXEL_BGR, bgr, 8,
+                  timeout == 50 ? WCO_TIMEOUT : WCO_WORKER_ERROR, timeout);
+        temporary_removed(box);
+        box.mode("ok");
+        line(recognize(instance.get(), WCO_PIXEL_BGR, bgr, 8), rgb);
+        temporary_removed(box);
+        instance.reset();
+        private_directories_removed(box);
+    }
+#endif
+
     for (const std::string mode : {"no-score", "empty", "vendor-error", "hang", "disconnect", "malformed", "send-fail"}) {
         box.mode(mode); instance = engine(box, worker, version);
         if (mode == "no-score") line(recognize(instance.get(), WCO_PIXEL_BGR, bgr, 8), rgb, false);

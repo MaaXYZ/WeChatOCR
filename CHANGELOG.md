@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 — 2026-11-12
+
+- Discover Windows OCR plugins with `.xnet` models beside `wxocr.dll`, including plugin 8096.
+- Retry Windows input-file sharing violations before replying, and recycle the worker if cleanup fails.
+- Extend the real-runtime smoke test to check Windows process cleanup and crash/timeout recovery.
+- Validate automatic discovery and real OCR with Windows WeChat 4.1.15.13 / plugin 8096.
+
 ## 0.2.0 — 2026-11-11
 
 - Add Toolkit APIs for runtime discovery, validation, defaults and image views.

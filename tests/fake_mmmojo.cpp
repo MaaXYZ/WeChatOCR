@@ -2,6 +2,7 @@
 // Test-only foreign-ABI simulator. This is never linked to a production target.
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -13,10 +14,12 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #ifdef _WIN32
+#include <windows.h>
 #define FAKE_EXPORT extern "C" __declspec(dllexport)
 using NativeChar = wchar_t;
 #else
@@ -290,6 +293,19 @@ FAKE_EXPORT bool SendMMMojoWriteInfo(void* handle, void* raw)
         const uint32_t id = env->version == 3 ? 1 : 10011;
         if (env->mode == "malformed") push(env, id, Bytes{0xff});
         else {
+#ifdef _WIN32
+            if (env->mode == "locked-input" || env->mode == "locked-input-persistent") {
+                const auto path = utf8_path(input.path);
+                HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                          nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+                require(file != INVALID_HANDLE_VALUE, "cannot retain the runtime input handle");
+                const auto delay = std::chrono::milliseconds(env->mode == "locked-input" ? 75 : 5000);
+                std::thread([file, delay] {
+                    std::this_thread::sleep_for(delay);
+                    CloseHandle(file);
+                }).detach();
+            }
+#endif
             // A delayed/wrong task must not overwrite the active task result.
             Picture wrong_task = picture; wrong_task.pixels = "wrong-task";
             push(env, id, response(env, input.task + 100, wrong_task));
